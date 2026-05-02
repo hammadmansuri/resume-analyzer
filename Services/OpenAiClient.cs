@@ -32,6 +32,25 @@ public class FlexibleStringConverter : JsonConverter<string>
     }
 }
 
+public class FlexibleIntConverter : JsonConverter<int>
+{
+    public override int Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        return reader.TokenType switch
+        {
+            JsonTokenType.Number => reader.GetInt32(),
+            JsonTokenType.String when int.TryParse(reader.GetString(), out var value) => value,
+            JsonTokenType.String => int.TryParse(reader.GetString()?.Split(' ')[0], out var value) ? value : 0,
+            _ => 0
+        };
+    }
+
+    public override void Write(Utf8JsonWriter writer, int value, JsonSerializerOptions options)
+    {
+        writer.WriteNumberValue(value);
+    }
+}
+
 public sealed class OpenAiClient
 {
     private const string DefaultApiUrl = "https://api.openai.com/v1/chat/completions";
@@ -44,17 +63,36 @@ public sealed class OpenAiClient
         { "Full Stack Developer", "Frontend + Backend + APIs + Deployment + Databases" }
     };
     private readonly HttpClient _httpClient;
+    private readonly AnalysisCacheService _cacheService;
+    private readonly UsageTrackingService _usageService;
 
-    public OpenAiClient(HttpClient httpClient)
+    public OpenAiClient(HttpClient httpClient, AnalysisCacheService cacheService, UsageTrackingService usageService)
     {
         _httpClient = httpClient;
+        _cacheService = cacheService;
+        _usageService = usageService;
     }
 
-    public async Task<ResumeAnalysisResponse> AnalyzeResumeAsync(ResumeAnalysisRequest request, string apiKey)
+    public async Task<ResumeAnalysisResponse> AnalyzeResumeAsync(ResumeAnalysisRequest request, string apiKey, bool useSimplifiedAnalysis = false)
     {
         if (string.IsNullOrWhiteSpace(apiKey))
         {
             throw new InvalidOperationException("OPENAI_API_KEY must be provided.");
+        }
+
+        // Check cache first
+        var inputHash = AnalysisCacheService.GenerateInputHash(request.ResumeText, request.TargetRole);
+        if (_cacheService.TryGetCachedResult(inputHash, out var cachedResult))
+        {
+            return cachedResult!;
+        }
+
+        // If simplified analysis requested, return basic response
+        if (useSimplifiedAnalysis)
+        {
+            var simplifiedResponse = CreateSimplifiedResponse(request.TargetRole);
+            _cacheService.CacheResult(inputHash, simplifiedResponse); // Cache it too
+            return simplifiedResponse;
         }
 
         // Get or generate role expectations
@@ -74,7 +112,7 @@ public sealed class OpenAiClient
                 new
                 {
                     role = "system",
-                    content = "You are a strict senior hiring manager evaluating a candidate for a specific role. Be critical and realistic. Do NOT inflate scores. Rules: - Most candidates fall between 55–75 - Scores above 80 should be rare and justified - Avoid outdated or low-demand technologies - Focus only on skills that are currently in demand in the job market. Prioritize practical, commonly required skills over advanced or niche tools. Avoid recommending highly advanced tools (e.g., Kubernetes) unless clearly required. Focus on skills that improve employability quickly. Must-have skills should be frequently required across most job descriptions, not niche or advanced tooling. To identify missing skills: First extract and list all candidate's existing skills from the resume. Then compare with market expectations. Do NOT list a skill as missing if it is clearly present in the resume. Carefully verify before marking a skill as missing. Avoid false negatives. Evaluate if the candidate is under-leveled or over-qualified for the target role and suggest a more appropriate role if needed. Actions must: - Be achievable by an individual developer - Not require leading a team - Be completable within 1–3 weeks - Be portfolio-worthy (GitHub project, deployable work) - Small, independently completable tasks (2–5 days each), not large systems - Ensure at least one action is beginner-friendly and can be completed in 1–2 days. Return only valid JSON with keys: score (0-100), strengths (array of 3-4 key strengths), missingSkills (object with mustHave and goodToHave arrays), actions (array of objects with task, difficulty, time), roleAssessment (object with fit (string: 'well-matched', 'under-qualified', 'over-qualified'), suggestedRole (string), reason (string)), firstStep (string for very small action user can start today). For time field in actions, return as string like '2 days' or '2-3 days'. IMPORTANT: All fields must be strings in JSON, not booleans or numbers."
+                    content = "You are a strict senior hiring manager evaluating a candidate for a specific role. Be critical and realistic. Do NOT inflate scores. Most candidates score 55–75; scores above 80 should be rare and justified. Focus on practical, commonly required skills, not advanced or niche tooling. Use evidence-based reasoning. First extract all candidate skills from the resume and categorize them by Backend, Frontend, Cloud, DevOps, Security, Data, Testing, and Other. Then compare those skills with the market expectations. Only mark a skill as missing if it is absent or weakly demonstrated. For each missing skill, include a brief reason why it is missing or insufficient. Provide an action plan with sequenced steps. Return only valid JSON with keys: score (0-100), strengths (array of 3-4 concise strengths), missingSkills (object with mustHave and goodToHave arrays of objects containing skill and reason), actionPlan (array of objects with step, task, goal, difficulty, time), roleAssessment (object with fit, suggestedRole, confidence, reason), firstStep (string). Use 'well-matched', 'under-qualified', or 'over-qualified' for fit. For time, use a string such as '2 days' or '2-3 days'. Do not include any extra text outside the JSON object."
                 },
                 new
                 {
@@ -95,7 +133,17 @@ public sealed class OpenAiClient
             throw new HttpRequestException($"OpenAI request failed ({response.StatusCode}): {responseBody}");
         }
 
-        return ParseOpenAiResponse(responseBody);
+        var result = ParseOpenAiResponse(responseBody);
+
+        // Cache the result
+        _cacheService.CacheResult(inputHash, result);
+
+        // Log usage (rough estimate: 1 token = $0.000002)
+        var estimatedTokens = (request.ResumeText.Length + request.TargetRole.Length + roleExpectations.Length) / 4;
+        var estimatedCost = estimatedTokens * 0.000002m;
+        _usageService.LogUsage(estimatedTokens, estimatedCost);
+
+        return result;
     }
 
     private async Task<string> GenerateRoleExpectationsAsync(string targetRole, string apiKey)
@@ -178,6 +226,29 @@ public sealed class OpenAiClient
         }
     }
 
+    private static ResumeAnalysisResponse CreateSimplifiedResponse(string targetRole)
+    {
+        return new ResumeAnalysisResponse
+        {
+            Score = 50, // Neutral score
+            MissingSkills = new MissingSkills
+            {
+                MustHave = new[] { new MissingSkillItem { Skill = "Analysis temporarily simplified", Reason = "Due to high usage, providing basic assessment only." } },
+                GoodToHave = Array.Empty<MissingSkillItem>()
+            },
+            ActionPlan = new[] { new ActionPlanItem { Step = 1, Task = "Review resume for role requirements", Goal = "Ensure resume matches job expectations", Difficulty = "Medium", Time = "1-2 hours" } },
+            Actions = Array.Empty<ActionItem>(),
+            Strengths = new[] { "Resume submitted successfully" },
+            FirstStep = "Focus on core skills for the " + targetRole + " role.",
+            RoleAssessment = new RoleAssessment
+            {
+                Fit = "under-qualified", // Conservative
+                SuggestedRole = targetRole,
+                Reason = "Simplified analysis - full assessment recommended when limits reset."
+            }
+        };
+    }
+
     private static ResumeAnalysisResponse CreateFallbackResponse()
     {
         return new ResumeAnalysisResponse
@@ -185,9 +256,10 @@ public sealed class OpenAiClient
             Score = 0,
             MissingSkills = new MissingSkills
             {
-                MustHave = new[] { "Unable to parse assessment" }.AsReadOnly(),
-                GoodToHave = Array.Empty<string>()
+                MustHave = new[] { new MissingSkillItem { Skill = "Unable to parse assessment", Reason = "The analyzer failed to interpret the AI response." } },
+                GoodToHave = Array.Empty<MissingSkillItem>()
             },
+            ActionPlan = Array.Empty<ActionPlanItem>(),
             Actions = Array.Empty<ActionItem>(),
             Strengths = Array.Empty<string>(),
             FirstStep = "Please try again. If the issue persists, contact support.",

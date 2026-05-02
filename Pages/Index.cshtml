@@ -32,14 +32,33 @@
         <div class="form-group">
             <label for="resumeText">Or Paste Resume Text</label>
             <textarea id="resumeText" name="resumeText" placeholder="Paste your resume text here..." class="form-control" rows="8"></textarea>
+            <small>Max 10,000 characters</small>
         </div>
 
         <div class="form-actions">
             <button type="submit" class="btn btn-primary" id="analyzeBtn">
                 <span id="btnText">Analyze My Resume</span>
-                <span id="spinner" style="display:none;">⏳ Analyzing...</span>
+                <span id="spinner" class="btn-loading" style="display:none;">
+                    <span class="spinner-icon"></span>
+                    Analyzing your resume… (~5–10 sec)
+                </span>
             </button>
         </div>
+
+        @if (Model?.EstimatedTokens > 0)
+        {
+            <div class="token-estimate @(Model.IsOverLimit ? "over-limit" : "")">
+                <strong>Estimated tokens:</strong> @Model.EstimatedTokens / 2000
+                @if (Model.IsOverLimit)
+                {
+                    <span class="warning">⚠️ Over limit - please shorten input</span>
+                }
+                else
+                {
+                    <span class="ok">✓ Within limit</span>
+                }
+            </div>
+        }
 
         @if (!string.IsNullOrEmpty(Model?.ErrorMessage))
         {
@@ -72,13 +91,43 @@
 </div>
 
 <script>
+    function estimateTokens(text) {
+        return Math.ceil(text.length / 4); // Rough estimate: 1 token ≈ 4 chars
+    }
+
+    function updateTokenEstimate() {
+        const targetRole = document.getElementById('targetRole').value.trim();
+        const resumeText = document.getElementById('resumeText').value.trim();
+        const combinedText = targetRole + resumeText;
+        const tokens = estimateTokens(combinedText);
+        const maxTokens = 2000;
+        const isOver = tokens > maxTokens;
+
+        let estimateDiv = document.querySelector('.token-estimate');
+        if (!estimateDiv) {
+            estimateDiv = document.createElement('div');
+            estimateDiv.className = 'token-estimate';
+            document.querySelector('.form-actions').after(estimateDiv);
+        }
+
+        estimateDiv.className = `token-estimate ${isOver ? 'over-limit' : ''}`;
+        estimateDiv.innerHTML = `
+            <strong>Estimated tokens:</strong> ${tokens} / ${maxTokens}
+            ${isOver ? '<span class="warning">⚠️ Over limit - please shorten input</span>' : '<span class="ok">✓ Within limit</span>'}
+        `;
+    }
+
     document.getElementById('resumeFile').addEventListener('change', function(e) {
         const fileName = e.target.files[0]?.name || 'No file chosen';
         const label = document.querySelector('.file-label span:nth-child(2)');
         if (e.target.files.length > 0) {
             label.textContent = '✓ ' + fileName;
         }
+        // Note: Can't estimate tokens from file without reading content
     });
+
+    document.getElementById('targetRole').addEventListener('input', updateTokenEstimate);
+    document.getElementById('resumeText').addEventListener('input', updateTokenEstimate);
 
     document.querySelector('.analysis-form').addEventListener('submit', function() {
         const targetRole = document.getElementById('targetRole').value.trim();
@@ -97,6 +146,6 @@
 
         document.getElementById('analyzeBtn').disabled = true;
         document.getElementById('btnText').style.display = 'none';
-        document.getElementById('spinner').style.display = 'inline';
+        document.getElementById('spinner').style.display = 'inline-flex';
     });
 </script>

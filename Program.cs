@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Collections.Concurrent;
 using UglyToad.PdfPig;
 using resume_analyzer.Models;
 using resume_analyzer.Services;
@@ -12,10 +13,29 @@ builder.Services.AddHttpClient<OpenAiClient>();
 builder.Services.AddRazorPages();
 builder.Services.AddAntiforgery();
 
+// Add rate limiting service
+builder.Services.AddSingleton<RateLimitingService>();
+// Add analysis cache service
+builder.Services.AddSingleton<AnalysisCacheService>();
+// Add usage tracking service
+builder.Services.AddSingleton<UsageTrackingService>();
+// Add budget monitoring service
+builder.Services.AddSingleton<BudgetMonitoringService>();
+// Add feedback service
+builder.Services.AddSingleton<FeedbackService>();
+
 var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
 builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 
 var app = builder.Build();
+
+// Load usage data on startup
+var usageService = app.Services.GetRequiredService<UsageTrackingService>();
+usageService.LoadUsageFromFile();
+
+// Load feedback data on startup
+var feedbackService = app.Services.GetRequiredService<FeedbackService>();
+feedbackService.LoadFeedbackFromFile();
 
 if (!app.Environment.IsDevelopment())
 {
@@ -25,6 +45,9 @@ if (!app.Environment.IsDevelopment())
 app.UseStaticFiles();
 app.UseRouting();
 app.UseAntiforgery();
+
+// Add rate limiting middleware
+app.UseMiddleware<RateLimitingMiddleware>();
 
 // Map Razor Pages
 app.MapRazorPages();

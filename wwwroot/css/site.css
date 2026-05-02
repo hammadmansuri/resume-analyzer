@@ -185,15 +185,33 @@ main {
 .btn-primary:hover:not(:disabled) {
     background-color: var(--primary-dark);
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
-}
+        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.24);
+    }
 
-.btn-primary:disabled {
-    opacity: 0.7;
-    cursor: not-allowed;
-}
+    .btn-primary:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+    }
 
-.btn-secondary {
+    .btn-loading {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.6rem;
+        font-weight: 600;
+    }
+
+    .spinner-icon {
+        width: 14px;
+        height: 14px;
+        border: 2px solid rgba(255, 255, 255, 0.5);
+        border-top-color: white;
+        border-radius: 50%;
+        animation: spin 0.9s linear infinite;
+    }
+
+    @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
     background-color: var(--gray-200);
     color: var(--gray-900);
 }
@@ -275,12 +293,31 @@ main {
     margin-bottom: 8px;
 }
 
+.results-summary {
+    color: var(--gray-500);
+    max-width: 760px;
+    margin: 0 auto;
+    font-size: 16px;
+}
+
+.section-note {
+    color: var(--gray-500);
+    margin-top: 8px;
+    font-size: 14px;
+}
+
+.actions-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+}
+
 .card {
     background: white;
     border-radius: 12px;
     padding: 32px;
     margin-bottom: 24px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
 }
 
 .card h3 {
@@ -414,13 +451,12 @@ main {
     color: #7c2d12;
 }
 
-/* Actions */
-.actions-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 20px;
+.fit-unknown {
+    background-color: var(--gray-100);
+    color: var(--gray-700);
 }
 
+/* Actions */
 .action-card {
     background-color: var(--gray-50);
     padding: 20px;
@@ -508,14 +544,30 @@ main {
     margin: 0;
 }
 
-/* CTA Section */
-.cta-section {
-    text-align: center;
-    margin: 50px 0;
-    display: flex;
-    gap: 12px;
-    justify-content: center;
-    flex-wrap: wrap;
+/* Token Estimate */
+.token-estimate {
+    margin-top: 16px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    background-color: var(--gray-50);
+    border: 1px solid var(--gray-200);
+    font-size: 14px;
+}
+
+.token-estimate.over-limit {
+    background-color: #fef2f2;
+    border-color: var(--danger);
+    color: var(--danger);
+}
+
+.token-estimate .warning {
+    color: var(--danger);
+    font-weight: 600;
+}
+
+.token-estimate .ok {
+    color: var(--success);
+    font-weight: 600;
 }
 
 /* Footer */
@@ -564,4 +616,130 @@ main {
         width: 100%;
         text-align: center;
     }
+}
+
+/* Feedback Section */
+.feedback-link {
+    text-align: center;
+    margin: 20px 0;
+}
+
+.feedback-link a {
+    color: var(--primary);
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.feedback-link a:hover {
+    text-decoration: underline;
+}
+
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.5);
+}
+
+.modal-content {
+    background-color: white;
+    margin: 10% auto;
+    padding: 20px;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 500px;
+    position: relative;
+}
+
+.close {
+    position: absolute;
+    right: 20px;
+    top: 15px;
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+    color: var(--gray-500);
+}
+
+.close:hover {
+    color: var(--gray-900);
+}
+
+.feedback-form .form-group {
+    margin-bottom: 20px;
+}
+
+.rating-stars {
+    display: flex;
+    gap: 8px;
+}
+
+.rating-stars input[type="radio"] {
+    display: none;
+}
+
+.rating-stars label {
+    font-size: 24px;
+    cursor: pointer;
+    color: var(--gray-300);
+    transition: color 0.2s;
+}
+
+.rating-stars input[type="radio"]:checked + label {
+    color: #fbbf24 !important;
+}
+
+.rating-stars label:hover {
+    color: #fbbf24 !important;
+}
+
+.helpful-options {
+    display: flex;
+    gap: 20px;
+}
+
+.helpful-options label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.feedback-form textarea {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid var(--gray-300);
+    border-radius: 8px;
+    font-family: inherit;
+    resize: vertical;
+}
+
+.feedback-form .btn {
+    background: var(--primary);
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: background 0.2s;
+}
+
+.feedback-form .btn:hover {
+    background: var(--primary-dark);
+}
+
+.btn-outline {
+    background: transparent;
+    color: var(--primary);
+    border: 2px solid var(--primary);
+}
+
+.btn-outline:hover {
+    background: var(--primary);
+    color: white;
 }

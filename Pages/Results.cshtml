@@ -8,6 +8,7 @@
 {
     <div class="results-header">
         <h2>Your Career Assessment for <strong>@Model.TargetRole</strong></h2>
+        <p class="results-summary">This report is based on your resume content and the expectations for the role you entered. Use it to focus on the highest-impact gaps and opportunities.</p>
     </div>
 
     <!-- Score Card -->
@@ -20,33 +21,35 @@
     </div>
 
     <!-- Strengths Section -->
-    @if (Model.Analysis.Strengths?.Count > 0)
-    {
-        <section class="card strengths-section">
-            <h3>💪 Your Strengths</h3>
+    <section class="card strengths-section">
+        <h3>💪 Your Strengths</h3>
+        @if (Model.Analysis.Strengths?.Count > 0)
+        {
             <ul class="strengths-list">
                 @foreach (var strength in Model.Analysis.Strengths)
                 {
                     <li>@strength</li>
                 }
             </ul>
-        </section>
-    }
+        }
+        else
+        {
+            <p>No strengths detected. The assessor may not have enough data.</p>
+        }
+    </section>
 
     <!-- Missing Skills Section -->
-    @if (Model.Analysis.MissingSkills != null)
-    {
-        <section class="card skills-section">
-            <h3>🎯 What You Need to Learn</h3>
-
+    <section class="card skills-section">
+        <h3>🎯 What You Need to Learn</h3>
+        <div class="skill-blocks">
             @if (Model.Analysis.MissingSkills.MustHave?.Count > 0)
             {
                 <div class="skill-priority">
                     <h4 class="priority-label must-have">⚠️ MUST HAVE (Critical)</h4>
                     <ul class="skills-list">
-                        @foreach (var skill in Model.Analysis.MissingSkills.MustHave)
+                        @foreach (var missing in Model.Analysis.MissingSkills.MustHave)
                         {
-                            <li><span class="skill-badge">@skill</span></li>
+                            <li><span class="skill-badge">@missing.Skill</span></li>
                         }
                     </ul>
                 </div>
@@ -57,40 +60,57 @@
                 <div class="skill-priority">
                     <h4 class="priority-label good-to-have">✨ GOOD TO HAVE (Next Level)</h4>
                     <ul class="skills-list">
-                        @foreach (var skill in Model.Analysis.MissingSkills.GoodToHave)
+                        @foreach (var missing in Model.Analysis.MissingSkills.GoodToHave)
                         {
-                            <li><span class="skill-badge">@skill</span></li>
+                            <li><span class="skill-badge">@missing.Skill</span></li>
                         }
                     </ul>
                 </div>
             }
-        </section>
-    }
+        </div>
+    </section>
 
     <!-- Role Assessment -->
-    @if (Model.Analysis.RoleAssessment != null && !string.IsNullOrEmpty(Model.Analysis.RoleAssessment.Fit))
-    {
-        <section class="card assessment-section">
-            <h3>📊 Role Fit Assessment</h3>
-            <div class="fit-indicator @Model.GetFitClass()">
-                <strong>@Model.GetFitLabel():</strong> @Model.Analysis.RoleAssessment.Fit
-            </div>
-            @if (!string.IsNullOrEmpty(Model.Analysis.RoleAssessment.SuggestedRole))
-            {
-                <p><strong>Suggested Role:</strong> @Model.Analysis.RoleAssessment.SuggestedRole</p>
-            }
-            @if (!string.IsNullOrEmpty(Model.Analysis.RoleAssessment.Reason))
-            {
-                <p><em>@Model.Analysis.RoleAssessment.Reason</em></p>
-            }
-        </section>
-    }
+    <section class="card assessment-section">
+        <h3>📊 Role Fit Assessment</h3>
+        <div class="fit-indicator @Model.GetFitClass()">
+            <strong>@Model.GetFitLabel():</strong> @Model.Analysis.RoleAssessment.Fit
+        </div>
+        @if (!string.IsNullOrEmpty(Model.Analysis.RoleAssessment.SuggestedRole))
+        {
+            <p><strong>Suggested Role:</strong> @Model.Analysis.RoleAssessment.SuggestedRole</p>
+        }
+        @if (!string.IsNullOrEmpty(Model.Analysis.RoleAssessment.Confidence))
+        {
+            <p><strong>Confidence:</strong> @Model.Analysis.RoleAssessment.Confidence</p>
+        }
+        @if (!string.IsNullOrEmpty(Model.Analysis.RoleAssessment.Reason))
+        {
+            <p><em>@Model.Analysis.RoleAssessment.Reason</em></p>
+        }
+    </section>
 
     <!-- Action Items -->
-    @if (Model.Analysis.Actions?.Count > 0)
-    {
-        <section class="card actions-section">
-            <h3>🚀 Your Action Plan</h3>
+    <section class="card actions-section">
+        <h3>🚀 Your Action Plan</h3>
+        @if (Model.Analysis.ActionPlan?.Count > 0)
+        {
+            <div class="actions-grid">
+                @foreach (var step in Model.Analysis.ActionPlan)
+                {
+                    <div class="action-card">
+                        <div class="action-number">@step.Step</div>
+                        <h4>@step.Task</h4>
+                        <div class="action-meta">
+                            <span class="badge difficulty-@step.Difficulty.ToLower()">@step.Difficulty</span>
+                            <span class="badge time">⏱️ @step.Time</span>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+        else if (Model.Analysis.Actions?.Count > 0)
+        {
             <div class="actions-grid">
                 @foreach (var (action, index) in Model.Analysis.Actions.Select((a, i) => (a, i + 1)))
                 {
@@ -104,10 +124,13 @@
                     </div>
                 }
             </div>
-        </section>
-    }
+        }
+        else
+        {
+            <p>No action plan available. Try adjusting the target role or resume detail.</p>
+        }
+    </section>
 
-    <!-- First Step -->
     @if (!string.IsNullOrEmpty(Model.Analysis.FirstStep))
     {
         <section class="card first-step-section">
@@ -119,10 +142,60 @@
         </section>
     }
 
+    <!-- Feedback Section -->
+    <div class="feedback-link">
+        <a href="#" onclick="openFeedbackModal(); return false;">💬 Help us improve - Share your feedback</a>
+    </div>
+
+    <!-- Feedback Modal -->
+    <div id="feedbackModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeFeedbackModal()">&times;</span>
+            <h3>💬 Help Us Improve</h3>
+            <p>Your feedback helps us make better assessments. How useful was this analysis?</p>
+
+            @if (TempData["FeedbackSubmitted"] != null)
+            {
+                <div class="alert alert-success">
+                    @TempData["FeedbackSubmitted"]
+                </div>
+            }
+
+            <form method="post" class="feedback-form" id="feedbackForm">
+                <div class="form-group">
+                    <label>Rating (1-5 stars)</label>
+                    <div class="rating-stars">
+                        @for (int i = 1; i <= 5; i++)
+                        {
+                            <input type="radio" id="star-@i" name="rating" value="@i" />
+                            <label for="star-@i" data-star="@i">&#9733;</label>
+                        }
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="helpful">Was this analysis helpful?</label>
+                    <div class="helpful-options">
+                        <label><input type="radio" name="helpful" value="true" required /> Yes</label>
+                        <label><input type="radio" name="helpful" value="false" required /> No</label>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="comments">Comments (optional)</label>
+                    <textarea id="comments" name="comments" placeholder="Any suggestions or feedback?" rows="3" maxlength="500"></textarea>
+                </div>
+
+                <button type="submit" class="btn btn-primary">Submit Feedback</button>
+            </form>
+        </div>
+    </div>
+
     <!-- CTA -->
     <div class="cta-section">
         <a href="/" class="btn btn-secondary">← Analyze Another Resume</a>
-        <a href="#share" class="btn btn-primary">Share Results</a>
+        <button type="button" class="btn btn-outline" onclick="shareResults()">Share Results</button>
+        <a href="?download=true" class="btn btn-primary">Download Report</a>
     </div>
 }
 else
@@ -131,3 +204,93 @@ else
         <p>Unable to load analysis results. <a href="/">Try again</a></p>
     </div>
 }
+
+<script>
+    function shareResults() {
+        const title = `Resume Analysis for ${document.querySelector('.results-header strong').textContent}`;
+        const text = `Check out my resume analysis score: ${document.querySelector('.score-number').textContent}/100 for ${document.querySelector('.results-header strong').textContent}`;
+        const url = window.location.href;
+
+        if (navigator.share) {
+            // Use Web Share API for mobile
+            navigator.share({
+                title: title,
+                text: text,
+                url: url
+            }).catch(console.error);
+        } else {
+            // Fallback: copy to clipboard
+            navigator.clipboard.writeText(`${title}\n${text}\n${url}`).then(() => {
+                alert('Results link copied to clipboard!');
+            }).catch(() => {
+                // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = `${title}\n${text}\n${url}`;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                alert('Results link copied to clipboard!');
+            });
+        }
+    }
+
+    function openFeedbackModal() {
+        document.getElementById('feedbackModal').style.display = 'block';
+    }
+
+    function closeFeedbackModal() {
+        document.getElementById('feedbackModal').style.display = 'none';
+    }
+
+    // Close modal when clicking outside
+    window.onclick = function(event) {
+        const modal = document.getElementById('feedbackModal');
+        if (event.target == modal) {
+            modal.style.display = 'none';
+        }
+    }
+
+    // Star rating functionality
+    const ratingStars = document.querySelectorAll('.rating-stars input');
+    const ratingLabels = document.querySelectorAll('.rating-stars label');
+
+    ratingLabels.forEach(label => {
+        label.addEventListener('mouseenter', function() {
+            const starValue = parseInt(this.dataset.star);
+            ratingLabels.forEach(l => {
+                const lValue = parseInt(l.dataset.star);
+                if (lValue <= starValue) {
+                    l.style.color = '#fbbf24';
+                } else {
+                    l.style.color = 'var(--gray-300)';
+                }
+            });
+        });
+
+        label.addEventListener('mouseleave', function() {
+            updateStarColors();
+        });
+
+        label.addEventListener('click', function() {
+            const starValue = parseInt(this.dataset.star);
+            document.getElementById(`star-${starValue}`).checked = true;
+            updateStarColors();
+        });
+    });
+
+    function updateStarColors() {
+        const checkedInput = document.querySelector('.rating-stars input:checked');
+        ratingLabels.forEach(label => {
+            const starValue = parseInt(label.dataset.star);
+            if (checkedInput && parseInt(checkedInput.value) >= starValue) {
+                label.style.color = '#fbbf24';
+            } else {
+                label.style.color = 'var(--gray-300)';
+            }
+        });
+    }
+
+    // Call updateStarColors on page load to ensure correct initial state
+    document.addEventListener('DOMContentLoaded', updateStarColors);
+</script>
