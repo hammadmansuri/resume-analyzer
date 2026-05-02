@@ -37,7 +37,7 @@ public class FeedbackService
             if (File.Exists(FeedbackFilePath))
             {
                 var json = File.ReadAllText(FeedbackFilePath);
-                var records = JsonSerializer.Deserialize<List<FeedbackRecord>>(json);
+                var records = DeserializeFeedbackRecords(json);
                 if (records != null)
                 {
                     foreach (var record in records)
@@ -51,6 +51,25 @@ public class FeedbackService
         {
             Console.Error.WriteLine($"Failed to load feedback data: {ex.Message}");
         }
+    }
+
+    private static List<FeedbackRecord>? DeserializeFeedbackRecords(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+
+        if (document.RootElement.ValueKind == JsonValueKind.Array)
+        {
+            return document.RootElement.Deserialize<List<FeedbackRecord>>();
+        }
+
+        if (document.RootElement.ValueKind == JsonValueKind.Object &&
+            document.RootElement.TryGetProperty("Feedback", out var feedbackElement) &&
+            feedbackElement.ValueKind == JsonValueKind.Array)
+        {
+            return feedbackElement.Deserialize<List<FeedbackRecord>>();
+        }
+
+        return new List<FeedbackRecord>();
     }
 
     public class FeedbackRecord

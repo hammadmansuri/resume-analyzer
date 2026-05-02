@@ -4,24 +4,32 @@ namespace resume_analyzer.Services;
 
 public class RateLimitingService
 {
-    private readonly ConcurrentDictionary<string, List<DateTime>> _requests = new();
+    private readonly ConcurrentDictionary<string, RequestWindow> _requests = new();
     private const int MaxRequestsPerHour = 5;
     private static readonly TimeSpan Window = TimeSpan.FromHours(1);
 
     public bool IsAllowed(string key)
     {
         var now = DateTime.UtcNow;
-        var userRequests = _requests.GetOrAdd(key, _ => new List<DateTime>());
+        var userRequests = _requests.GetOrAdd(key, _ => new RequestWindow());
 
-        // Remove old requests outside the window
-        userRequests.RemoveAll(r => now - r > Window);
-
-        if (userRequests.Count >= MaxRequestsPerHour)
+        lock (userRequests.SyncRoot)
         {
-            return false;
-        }
+            userRequests.Requests.RemoveAll(r => now - r > Window);
 
-        userRequests.Add(now);
-        return true;
+            if (userRequests.Requests.Count >= MaxRequestsPerHour)
+            {
+                return false;
+            }
+
+            userRequests.Requests.Add(now);
+            return true;
+        }
+    }
+
+    private sealed class RequestWindow
+    {
+        public object SyncRoot { get; } = new();
+        public List<DateTime> Requests { get; } = new();
     }
 }

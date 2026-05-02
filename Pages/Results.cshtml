@@ -162,6 +162,9 @@
             }
 
             <form method="post" class="feedback-form" id="feedbackForm">
+                <input type="hidden" name="targetRole" value="@Model.TargetRole" />
+                <input type="hidden" name="score" value="@Model.Analysis.Score" />
+
                 <div class="form-group">
                     <label>Rating (1-5 stars)</label>
                     <div class="rating-stars">

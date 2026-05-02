@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using resume_analyzer.Models;
 using resume_analyzer.Services;
+using System.Net;
 using System.Text;
 using System.Text.Json;
 
@@ -21,24 +22,7 @@ public class ResultsModel : PageModel
 
     public IActionResult OnGet(bool? download)
     {
-        if (TempData.Peek("AnalysisResult") is string analysisJson)
-        {
-            try
-            {
-                var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
-                {
-                    PropertyNameCaseInsensitive = true
-                };
-                Analysis = JsonSerializer.Deserialize<ResumeAnalysisResponse>(analysisJson, options);
-                TargetRole = TempData.Peek("TargetRole")?.ToString();
-                TempData.Keep("AnalysisResult");
-                TempData.Keep("TargetRole");
-            }
-            catch
-            {
-                // If deserialization fails, analysis will be null
-            }
-        }
+        LoadAnalysisFromTempData();
 
         if (download == true && Analysis != null)
         {
@@ -50,24 +34,57 @@ public class ResultsModel : PageModel
         return Page();
     }
 
-    public IActionResult OnPost(int rating, string comments, bool helpful)
+    public IActionResult OnPost(int rating, string comments, bool helpful, string? targetRole, int? score)
     {
-        if (Analysis != null)
+        LoadAnalysisFromTempData();
+
+        var feedbackTargetRole = TargetRole ?? targetRole;
+        var feedbackScore = Analysis?.Score ?? score;
+
+        if (feedbackScore.HasValue)
         {
             var feedback = new FeedbackService.FeedbackRecord
             {
-                TargetRole = TargetRole,
-                Score = Analysis.Score,
+                TargetRole = feedbackTargetRole,
+                Score = feedbackScore.Value,
                 Rating = rating,
                 Comments = comments,
                 Helpful = helpful
             };
             _feedbackService.AddFeedback(feedback);
+
+            TempData["FeedbackSubmitted"] = "Thank you for your feedback!";
+        }
+        else
+        {
+            TempData["FeedbackSubmitted"] = "Unable to save feedback because the analysis details expired. Please run a new analysis and try again.";
         }
 
-        // Redirect back to results with success message
-        TempData["FeedbackSubmitted"] = "Thank you for your feedback!";
         return RedirectToPage();
+    }
+
+    private void LoadAnalysisFromTempData()
+    {
+        if (TempData.Peek("AnalysisResult") is not string analysisJson)
+        {
+            return;
+        }
+
+        try
+        {
+            var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
+            {
+                PropertyNameCaseInsensitive = true
+            };
+            Analysis = JsonSerializer.Deserialize<ResumeAnalysisResponse>(analysisJson, options);
+            TargetRole = TempData.Peek("TargetRole")?.ToString();
+            TempData.Keep("AnalysisResult");
+            TempData.Keep("TargetRole");
+        }
+        catch
+        {
+            // If deserialization fails, analysis will be null
+        }
     }
 
     private string GenerateReport()
@@ -91,16 +108,16 @@ public class ResultsModel : PageModel
         builder.AppendLine(".list-card li { margin-bottom: 12px; }");
         builder.AppendLine(".section-note { color: #6b7280; margin-top: 8px; }");
         builder.AppendLine("</style>\n</head>\n<body>\n<div class=\"report-card\">\n");
-        builder.AppendLine($"<h1>Resume Analysis Report</h1>\n<p class=\"subtitle\">Target role: <strong>{TargetRole}</strong></p>\n");
+        builder.AppendLine($"<h1>Resume Analysis Report</h1>\n<p class=\"subtitle\">Target role: <strong>{Encode(TargetRole)}</strong></p>\n");
         builder.AppendLine("<section class=\"section\"><h2>Overview</h2>\n<div class=\"meta\">\n");
         builder.AppendLine($"<div><strong>Score</strong><span>{Analysis?.Score}</span></div>\n");
-        builder.AppendLine($"<div><strong>Fit</strong><span>{Analysis?.RoleAssessment.Fit}</span></div>\n");
-        builder.AppendLine($"<div><strong>Suggested role</strong><span>{Analysis?.RoleAssessment.SuggestedRole}</span></div>\n");
-        builder.AppendLine($"<div><strong>Confidence</strong><span>{Analysis?.RoleAssessment.Confidence}</span></div>\n");
+        builder.AppendLine($"<div><strong>Fit</strong><span>{Encode(Analysis?.RoleAssessment.Fit)}</span></div>\n");
+        builder.AppendLine($"<div><strong>Suggested role</strong><span>{Encode(Analysis?.RoleAssessment.SuggestedRole)}</span></div>\n");
+        builder.AppendLine($"<div><strong>Confidence</strong><span>{Encode(Analysis?.RoleAssessment.Confidence)}</span></div>\n");
         builder.AppendLine("</div>\n");
         if (!string.IsNullOrEmpty(Analysis?.RoleAssessment.Reason))
         {
-            builder.AppendLine($"<p>{Analysis.RoleAssessment.Reason}</p>\n");
+            builder.AppendLine($"<p>{Encode(Analysis.RoleAssessment.Reason)}</p>\n");
         }
         builder.AppendLine("</section>\n");
 
@@ -109,7 +126,7 @@ public class ResultsModel : PageModel
             builder.AppendLine("<section class=\"section\"><h2>Strengths</h2>\n<ul class=\"list-card\">\n");
             foreach (var strength in Analysis.Strengths)
             {
-                builder.AppendLine($"<li>{System.Net.WebUtility.HtmlEncode(strength)}</li>\n");
+                builder.AppendLine($"<li>{Encode(strength)}</li>\n");
             }
             builder.AppendLine("</ul>\n</section>\n");
         }
@@ -122,7 +139,7 @@ public class ResultsModel : PageModel
                 builder.AppendLine("<h3>Must-Have</h3>\n<ul class=\"list-card\">\n");
                 foreach (var item in Analysis.MissingSkills.MustHave)
                 {
-                    builder.AppendLine($"<li><strong>{System.Net.WebUtility.HtmlEncode(item.Skill)}</strong>: {System.Net.WebUtility.HtmlEncode(item.Reason)}</li>\n");
+                    builder.AppendLine($"<li><strong>{Encode(item.Skill)}</strong>: {Encode(item.Reason)}</li>\n");
                 }
                 builder.AppendLine("</ul>\n");
             }
@@ -131,7 +148,7 @@ public class ResultsModel : PageModel
                 builder.AppendLine("<h3>Good-to-Have</h3>\n<ul class=\"list-card\">\n");
                 foreach (var item in Analysis.MissingSkills.GoodToHave)
                 {
-                    builder.AppendLine($"<li><strong>{System.Net.WebUtility.HtmlEncode(item.Skill)}</strong>: {System.Net.WebUtility.HtmlEncode(item.Reason)}</li>\n");
+                    builder.AppendLine($"<li><strong>{Encode(item.Skill)}</strong>: {Encode(item.Reason)}</li>\n");
                 }
                 builder.AppendLine("</ul>\n");
             }
@@ -143,7 +160,7 @@ public class ResultsModel : PageModel
             builder.AppendLine("<section class=\"section\"><h2>Action Plan</h2>\n<p class=\"section-note\">Follow this sequence to close key gaps.</p>\n<ul class=\"list-card\">\n");
             foreach (var step in Analysis.ActionPlan)
             {
-                builder.AppendLine($"<li><strong>Step {step.Step}:</strong> {System.Net.WebUtility.HtmlEncode(step.Task)}<br><span class=\"badge\">Goal: {System.Net.WebUtility.HtmlEncode(step.Goal)}</span><span class=\"badge\">Difficulty: {System.Net.WebUtility.HtmlEncode(step.Difficulty)}</span><span class=\"badge\">Time: {System.Net.WebUtility.HtmlEncode(step.Time)}</span></li>\n");
+                builder.AppendLine($"<li><strong>Step {step.Step}:</strong> {Encode(step.Task)}<br><span class=\"badge\">Goal: {Encode(step.Goal)}</span><span class=\"badge\">Difficulty: {Encode(step.Difficulty)}</span><span class=\"badge\">Time: {Encode(step.Time)}</span></li>\n");
             }
             builder.AppendLine("</ul>\n</section>\n");
         }
@@ -152,7 +169,7 @@ public class ResultsModel : PageModel
             builder.AppendLine("<section class=\"section\"><h2>Action Plan</h2>\n<p class=\"section-note\">Follow this sequence to close key gaps.</p>\n<ul class=\"list-card\">\n");
             foreach (var (action, index) in Analysis.Actions.Select((a, i) => (a, i + 1)))
             {
-                builder.AppendLine($"<li><strong>Step {index}:</strong> {System.Net.WebUtility.HtmlEncode(action.Task)}<br><span class=\"badge\">Difficulty: {System.Net.WebUtility.HtmlEncode(action.Difficulty)}</span><span class=\"badge\">Time: {System.Net.WebUtility.HtmlEncode(action.Time)}</span></li>\n");
+                builder.AppendLine($"<li><strong>Step {index}:</strong> {Encode(action.Task)}<br><span class=\"badge\">Difficulty: {Encode(action.Difficulty)}</span><span class=\"badge\">Time: {Encode(action.Time)}</span></li>\n");
             }
             builder.AppendLine("</ul>\n</section>\n");
         }
@@ -160,13 +177,15 @@ public class ResultsModel : PageModel
         if (!string.IsNullOrEmpty(Analysis?.FirstStep))
         {
             builder.AppendLine("<section class=\"section\"><h2>First Step</h2>\n<div class=\"list-card\">\n");
-            builder.AppendLine($"<p>{System.Net.WebUtility.HtmlEncode(Analysis.FirstStep)}</p>\n");
+            builder.AppendLine($"<p>{Encode(Analysis.FirstStep)}</p>\n");
             builder.AppendLine("</div>\n</section>\n");
         }
 
         builder.AppendLine("</div>\n</body>\n</html>");
         return builder.ToString();
     }
+
+    private static string Encode(string? value) => WebUtility.HtmlEncode(value ?? string.Empty);
 
     public string GetScoreClass()
     {

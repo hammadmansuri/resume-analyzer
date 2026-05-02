@@ -16,9 +16,7 @@ public class RateLimitingMiddleware
         var clientIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 
         // Only rate limit POST requests to analysis endpoints
-        if (context.Request.Method == "POST" &&
-            (context.Request.Path.StartsWithSegments("/api/analyze-resume") ||
-             context.Request.Path.StartsWithSegments("/Index")))
+        if (HttpMethods.IsPost(context.Request.Method) && IsAnalysisEndpoint(context.Request.Path))
         {
             if (!_rateLimiter.IsAllowed(clientIp))
             {
@@ -29,5 +27,12 @@ public class RateLimitingMiddleware
         }
 
         await _next(context);
+    }
+
+    private static bool IsAnalysisEndpoint(PathString path)
+    {
+        return path == "/" ||
+            path.StartsWithSegments("/Index") ||
+            path.StartsWithSegments("/api/analyze-resume");
     }
 }
