@@ -1,0 +1,102 @@
+@page
+@model IndexModel
+@{
+    ViewData["Title"] = "Resume Analyzer";
+}
+
+<div class="hero">
+    <h2>Get a Realistic Career Assessment</h2>
+    <p>Upload your resume and get honest, actionable feedback on your readiness for your target role.</p>
+</div>
+
+<div class="form-section">
+    <form method="post" enctype="multipart/form-data" class="analysis-form">
+        <div class="form-group">
+            <label for="targetRole">Target Role *</label>
+            <input type="text" id="targetRole" name="targetRole" placeholder=".NET Developer, Senior Frontend Engineer, etc." required class="form-control" />
+            <small>e.g., .NET Developer, Java Backend Engineer, Full Stack Developer</small>
+        </div>
+
+        <div class="form-group">
+            <label for="resumeFile">Upload Resume (PDF or TXT) *</label>
+            <div class="file-upload">
+                <input type="file" id="resumeFile" name="resumeFile" accept=".pdf,.txt,.doc,.docx" class="file-input" />
+                <label for="resumeFile" class="file-label">
+                    <span class="upload-icon">📄</span>
+                    <span>Click to upload or drag & drop</span>
+                    <small>PDF, TXT, DOC, DOCX (max 5MB)</small>
+                </label>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="resumeText">Or Paste Resume Text</label>
+            <textarea id="resumeText" name="resumeText" placeholder="Paste your resume text here..." class="form-control" rows="8"></textarea>
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary" id="analyzeBtn">
+                <span id="btnText">Analyze My Resume</span>
+                <span id="spinner" style="display:none;">⏳ Analyzing...</span>
+            </button>
+        </div>
+
+        @if (!string.IsNullOrEmpty(Model?.ErrorMessage))
+        {
+            <div class="alert alert-danger">
+                @Model.ErrorMessage
+            </div>
+        }
+    </form>
+</div>
+
+<div class="info-section">
+    <h3>How It Works</h3>
+    <div class="info-grid">
+        <div class="info-card">
+            <div class="info-icon">1️⃣</div>
+            <h4>Submit Your Resume</h4>
+            <p>Upload your resume and specify your target role.</p>
+        </div>
+        <div class="info-card">
+            <div class="info-icon">2️⃣</div>
+            <h4>AI Analysis</h4>
+            <p>Our AI evaluates your readiness against market standards.</p>
+        </div>
+        <div class="info-card">
+            <div class="info-icon">3️⃣</div>
+            <h4>Get Actionable Feedback</h4>
+            <p>Receive realistic scores, missing skills, and project ideas.</p>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.getElementById('resumeFile').addEventListener('change', function(e) {
+        const fileName = e.target.files[0]?.name || 'No file chosen';
+        const label = document.querySelector('.file-label span:nth-child(2)');
+        if (e.target.files.length > 0) {
+            label.textContent = '✓ ' + fileName;
+        }
+    });
+
+    document.querySelector('.analysis-form').addEventListener('submit', function() {
+        const targetRole = document.getElementById('targetRole').value.trim();
+        const resumeFile = document.getElementById('resumeFile').files.length;
+        const resumeText = document.getElementById('resumeText').value.trim();
+
+        if (!targetRole) {
+            alert('Please enter a target role.');
+            return false;
+        }
+
+        if (!resumeFile && !resumeText) {
+            alert('Please upload a resume file or paste resume text.');
+            return false;
+        }
+
+        document.getElementById('analyzeBtn').disabled = true;
+        document.getElementById('btnText').style.display = 'none';
+        document.getElementById('spinner').style.display = 'inline';
+    });
+</script>

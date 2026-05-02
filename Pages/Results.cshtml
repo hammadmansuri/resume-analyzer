@@ -1,0 +1,133 @@
+@page
+@model ResultsModel
+@{
+    ViewData["Title"] = "Analysis Results";
+}
+
+@if (Model?.Analysis != null)
+{
+    <div class="results-header">
+        <h2>Your Career Assessment for <strong>@Model.TargetRole</strong></h2>
+    </div>
+
+    <!-- Score Card -->
+    <div class="score-card">
+        <div class="score-display">
+            <div class="score-number @Model.GetScoreClass()">@Model.Analysis.Score</div>
+            <div class="score-label">Readiness Score</div>
+            <p class="score-interpretation">@Model.GetScoreInterpretation()</p>
+        </div>
+    </div>
+
+    <!-- Strengths Section -->
+    @if (Model.Analysis.Strengths?.Count > 0)
+    {
+        <section class="card strengths-section">
+            <h3>💪 Your Strengths</h3>
+            <ul class="strengths-list">
+                @foreach (var strength in Model.Analysis.Strengths)
+                {
+                    <li>@strength</li>
+                }
+            </ul>
+        </section>
+    }
+
+    <!-- Missing Skills Section -->
+    @if (Model.Analysis.MissingSkills != null)
+    {
+        <section class="card skills-section">
+            <h3>🎯 What You Need to Learn</h3>
+
+            @if (Model.Analysis.MissingSkills.MustHave?.Count > 0)
+            {
+                <div class="skill-priority">
+                    <h4 class="priority-label must-have">⚠️ MUST HAVE (Critical)</h4>
+                    <ul class="skills-list">
+                        @foreach (var skill in Model.Analysis.MissingSkills.MustHave)
+                        {
+                            <li><span class="skill-badge">@skill</span></li>
+                        }
+                    </ul>
+                </div>
+            }
+
+            @if (Model.Analysis.MissingSkills.GoodToHave?.Count > 0)
+            {
+                <div class="skill-priority">
+                    <h4 class="priority-label good-to-have">✨ GOOD TO HAVE (Next Level)</h4>
+                    <ul class="skills-list">
+                        @foreach (var skill in Model.Analysis.MissingSkills.GoodToHave)
+                        {
+                            <li><span class="skill-badge">@skill</span></li>
+                        }
+                    </ul>
+                </div>
+            }
+        </section>
+    }
+
+    <!-- Role Assessment -->
+    @if (Model.Analysis.RoleAssessment != null && !string.IsNullOrEmpty(Model.Analysis.RoleAssessment.Fit))
+    {
+        <section class="card assessment-section">
+            <h3>📊 Role Fit Assessment</h3>
+            <div class="fit-indicator @Model.GetFitClass()">
+                <strong>@Model.GetFitLabel():</strong> @Model.Analysis.RoleAssessment.Fit
+            </div>
+            @if (!string.IsNullOrEmpty(Model.Analysis.RoleAssessment.SuggestedRole))
+            {
+                <p><strong>Suggested Role:</strong> @Model.Analysis.RoleAssessment.SuggestedRole</p>
+            }
+            @if (!string.IsNullOrEmpty(Model.Analysis.RoleAssessment.Reason))
+            {
+                <p><em>@Model.Analysis.RoleAssessment.Reason</em></p>
+            }
+        </section>
+    }
+
+    <!-- Action Items -->
+    @if (Model.Analysis.Actions?.Count > 0)
+    {
+        <section class="card actions-section">
+            <h3>🚀 Your Action Plan</h3>
+            <div class="actions-grid">
+                @foreach (var (action, index) in Model.Analysis.Actions.Select((a, i) => (a, i + 1)))
+                {
+                    <div class="action-card">
+                        <div class="action-number">@index</div>
+                        <h4>@action.Task</h4>
+                        <div class="action-meta">
+                            <span class="badge difficulty-@action.Difficulty.ToLower()">@action.Difficulty</span>
+                            <span class="badge time">⏱️ @action.Time</span>
+                        </div>
+                    </div>
+                }
+            </div>
+        </section>
+    }
+
+    <!-- First Step -->
+    @if (!string.IsNullOrEmpty(Model.Analysis.FirstStep))
+    {
+        <section class="card first-step-section">
+            <h3>🎯 Start Today</h3>
+            <div class="first-step-box">
+                <p>@Model.Analysis.FirstStep</p>
+                <p class="hint">This can be completed in 1-2 days and will immediately boost your competitiveness.</p>
+            </div>
+        </section>
+    }
+
+    <!-- CTA -->
+    <div class="cta-section">
+        <a href="/" class="btn btn-secondary">← Analyze Another Resume</a>
+        <a href="#share" class="btn btn-primary">Share Results</a>
+    </div>
+}
+else
+{
+    <div class="alert alert-danger">
+        <p>Unable to load analysis results. <a href="/">Try again</a></p>
+    </div>
+}
