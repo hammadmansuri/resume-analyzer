@@ -23,6 +23,8 @@ builder.Services.AddSingleton<UsageTrackingService>();
 builder.Services.AddSingleton<BudgetMonitoringService>();
 // Add feedback service
 builder.Services.AddSingleton<FeedbackService>();
+// Add privacy-safe user interaction logging service
+builder.Services.AddSingleton<InteractionLogService>();
 
 var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
 builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
@@ -48,6 +50,35 @@ app.UseAntiforgery();
 
 // Add rate limiting middleware
 app.UseMiddleware<RateLimitingMiddleware>();
+
+app.MapPost("/api/interaction-log", (InteractionLogRequest request, HttpContext context, InteractionLogService interactionLog) =>
+{
+    if (string.IsNullOrWhiteSpace(request.EventName) || request.EventName.Length > 80)
+    {
+        return Results.BadRequest();
+    }
+
+    var details = new Dictionary<string, object?>();
+    foreach (var item in request.Details ?? new Dictionary<string, JsonElement>())
+    {
+        if (item.Key.Length > 80)
+        {
+            continue;
+        }
+
+        details[item.Key] = item.Value.ValueKind switch
+        {
+            JsonValueKind.String => item.Value.GetString() is { Length: <= 120 } value ? value : "[redacted-long-string]",
+            JsonValueKind.Number when item.Value.TryGetInt64(out var number) => number,
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            _ => item.Value.ToString().Length <= 120 ? item.Value.ToString() : "[redacted-long-value]"
+        };
+    }
+
+    interactionLog.Log(request.EventName, context, details, request.SessionId);
+    return Results.NoContent();
+});
 
 // Map Razor Pages
 app.MapRazorPages();

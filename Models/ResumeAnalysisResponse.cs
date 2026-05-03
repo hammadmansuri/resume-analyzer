@@ -1,4 +1,21 @@
+using System.Text.Json.Serialization;
+
 namespace resume_analyzer.Models;
+
+public sealed class FirstStep
+{
+    [JsonConverter(typeof(resume_analyzer.Services.FlexibleStringConverter))]
+    public string Task { get; set; } = string.Empty;
+
+    [JsonConverter(typeof(resume_analyzer.Services.FlexibleStringConverter))]
+    public string Time { get; set; } = "1–2 hours";
+
+    [JsonConverter(typeof(resume_analyzer.Services.FlexibleStringConverter))]
+    public string Outcome { get; set; } = string.Empty;
+
+    [JsonConverter(typeof(resume_analyzer.Services.FlexibleStringConverter))]
+    public string Resource { get; set; } = string.Empty;
+}
 
 public sealed class MissingSkillItem
 {
@@ -25,6 +42,12 @@ public sealed class ActionItem
 
     [System.Text.Json.Serialization.JsonConverter(typeof(resume_analyzer.Services.FlexibleStringConverter))]
     public string Time { get; init; } = string.Empty;
+
+    [System.Text.Json.Serialization.JsonConverter(typeof(resume_analyzer.Services.FlexibleStringConverter))]
+    public string Why { get; init; } = string.Empty;
+
+    [System.Text.Json.Serialization.JsonConverter(typeof(resume_analyzer.Services.FlexibleStringConverter))]
+    public string SuccessCriteria { get; init; } = string.Empty;
 }
 
 public sealed class ActionPlanItem
@@ -43,6 +66,12 @@ public sealed class ActionPlanItem
 
     [System.Text.Json.Serialization.JsonConverter(typeof(resume_analyzer.Services.FlexibleStringConverter))]
     public string Time { get; init; } = string.Empty;
+
+    [System.Text.Json.Serialization.JsonConverter(typeof(resume_analyzer.Services.FlexibleStringConverter))]
+    public string Why { get; init; } = string.Empty;
+
+    [System.Text.Json.Serialization.JsonConverter(typeof(resume_analyzer.Services.FlexibleStringConverter))]
+    public string SuccessCriteria { get; init; } = string.Empty;
 }
 
 public sealed class RoleAssessment
@@ -70,8 +99,9 @@ public sealed class ResumeAnalysisResponse
     public IReadOnlyList<ActionItem> Actions { get; init; } = Array.Empty<ActionItem>();
     public IReadOnlyList<string> Strengths { get; init; } = Array.Empty<string>();
 
-    [System.Text.Json.Serialization.JsonConverter(typeof(resume_analyzer.Services.FlexibleStringConverter))]
-    public string FirstStep { get; init; } = string.Empty;
+    [JsonPropertyName("firstStep")]
+    [JsonConverter(typeof(resume_analyzer.Services.FirstStepJsonConverter))]
+    public FirstStep? FirstStep { get; set; }
 
     public RoleAssessment RoleAssessment { get; init; } = new();
 }

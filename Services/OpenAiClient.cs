@@ -1,8 +1,10 @@
 using System.Collections.Generic;
+using System.Globalization;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using resume_analyzer.Models;
 
 namespace resume_analyzer.Services;
@@ -39,10 +41,29 @@ public class FlexibleIntConverter : JsonConverter<int>
         return reader.TokenType switch
         {
             JsonTokenType.Number => reader.GetInt32(),
-            JsonTokenType.String when int.TryParse(reader.GetString(), out var value) => value,
-            JsonTokenType.String => int.TryParse(reader.GetString()?.Split(' ')[0], out var value) ? value : 0,
+            JsonTokenType.String => ParseFlexibleInt(reader.GetString()),
             _ => 0
         };
+    }
+
+    /// <summary>Parses integers from numeric strings or embedded numbers (e.g. "Step 1" → 1).</summary>
+    private static int ParseFlexibleInt(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return 0;
+        }
+
+        var t = raw.Trim();
+        if (int.TryParse(t, NumberStyles.Integer, CultureInfo.InvariantCulture, out var direct))
+        {
+            return direct;
+        }
+
+        var m = Regex.Match(t, @"\d+");
+        return m.Success && int.TryParse(m.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var embedded)
+            ? embedded
+            : 0;
     }
 
     public override void Write(Utf8JsonWriter writer, int value, JsonSerializerOptions options)
@@ -82,15 +103,17 @@ public sealed class OpenAiClient
 
         // Check cache first
         var inputHash = AnalysisCacheService.GenerateInputHash(request.ResumeText, request.TargetRole);
-        if (_cacheService.TryGetCachedResult(inputHash, out var cachedResult))
+        if (_cacheService.TryGetCachedResult(inputHash, out var cachedResult) && cachedResult is not null)
         {
-            return cachedResult!;
+            ResumeAnalyzerService.EnsureFirstStep(cachedResult);
+            return cachedResult;
         }
 
         // If simplified analysis requested, return basic response
         if (useSimplifiedAnalysis)
         {
             var simplifiedResponse = CreateSimplifiedResponse(request.TargetRole);
+            ResumeAnalyzerService.EnsureFirstStep(simplifiedResponse);
             _cacheService.CacheResult(inputHash, simplifiedResponse); // Cache it too
             return simplifiedResponse;
         }
@@ -112,12 +135,12 @@ public sealed class OpenAiClient
                 new
                 {
                     role = "system",
-                    content = "You are a strict senior hiring manager evaluating a candidate for a specific role. Be critical and realistic. Do NOT inflate scores. Most candidates score 55–75; scores above 80 should be rare and justified. Focus on practical, commonly required skills, not advanced or niche tooling. Use evidence-based reasoning. First extract all candidate skills from the resume and categorize them by Backend, Frontend, Cloud, DevOps, Security, Data, Testing, and Other. Then compare those skills with the market expectations. Only mark a skill as missing if it is absent or weakly demonstrated. For each missing skill, include a brief reason why it is missing or insufficient. Provide an action plan with sequenced steps. Return only valid JSON with keys: score (0-100), strengths (array of 3-4 concise strengths), missingSkills (object with mustHave and goodToHave arrays of objects containing skill and reason), actionPlan (array of objects with step, task, goal, difficulty, time), roleAssessment (object with fit, suggestedRole, confidence, reason), firstStep (string). Use 'well-matched', 'under-qualified', or 'over-qualified' for fit. For time, use a string such as '2 days' or '2-3 days'. Do not include any extra text outside the JSON object."
+                    content = OpenAiPrompts.AnalyzeResumeSystem
                 },
                 new
                 {
                     role = "user",
-                    content = $"Target Role: {request.TargetRole}\n\nMarket Expectations: {roleExpectations}\n\nResume:\n{request.ResumeText}\n\nRespond with JSON only."
+                    content = OpenAiPrompts.AnalyzeResumeUser(request.TargetRole, roleExpectations, request.ResumeText)
                 }
             }
         };
@@ -134,6 +157,7 @@ public sealed class OpenAiClient
         }
 
         var result = ParseOpenAiResponse(responseBody);
+        ResumeAnalyzerService.EnsureFirstStep(result);
 
         // Cache the result
         _cacheService.CacheResult(inputHash, result);
@@ -160,12 +184,12 @@ public sealed class OpenAiClient
                 new
                 {
                     role = "system",
-                    content = "You are a hiring expert. Given a target role, list the most important 6–8 skills currently expected in the job market. Keep it concise and practical. Return ONLY a comma-separated list of skills, nothing else."
+                    content = OpenAiPrompts.RoleExpectationsSystem
                 },
                 new
                 {
                     role = "user",
-                    content = $"Role: {targetRole}"
+                    content = OpenAiPrompts.RoleExpectationsUser(targetRole)
                 }
             }
         };
@@ -236,10 +260,21 @@ public sealed class OpenAiClient
                 MustHave = new[] { new MissingSkillItem { Skill = "Analysis temporarily simplified", Reason = "Due to high usage, providing basic assessment only." } },
                 GoodToHave = Array.Empty<MissingSkillItem>()
             },
-            ActionPlan = new[] { new ActionPlanItem { Step = 1, Task = "Review resume for role requirements", Goal = "Ensure resume matches job expectations", Difficulty = "Medium", Time = "1-2 hours" } },
+            ActionPlan = new[]
+            {
+                new ActionPlanItem
+                {
+                    Step = 1,
+                    Task = "Rewrite three resume bullets into STAR stories with measurable outcomes for one flagship project",
+                    Goal = string.Empty,
+                    Why = "Screeners reward proof of impact more than skill laundry lists",
+                    SuccessCriteria = "Each bullet states situation, action, and quantified or observable result",
+                    Difficulty = "Easy",
+                    Time = "2 days"
+                }
+            },
             Actions = Array.Empty<ActionItem>(),
             Strengths = new[] { "Resume submitted successfully" },
-            FirstStep = "Focus on core skills for the " + targetRole + " role.",
             RoleAssessment = new RoleAssessment
             {
                 Fit = "under-qualified", // Conservative
@@ -262,7 +297,6 @@ public sealed class OpenAiClient
             ActionPlan = Array.Empty<ActionPlanItem>(),
             Actions = Array.Empty<ActionItem>(),
             Strengths = Array.Empty<string>(),
-            FirstStep = "Please try again. If the issue persists, contact support.",
             RoleAssessment = new RoleAssessment
             {
                 Fit = "unable-to-assess",

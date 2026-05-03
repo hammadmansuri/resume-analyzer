@@ -492,6 +492,17 @@ main {
     flex-wrap: wrap;
 }
 
+.action-detail {
+    margin: 12px 0 0;
+    font-size: 14px;
+    line-height: 1.55;
+    color: var(--gray-700);
+}
+
+.action-detail:last-child {
+    margin-bottom: 4px;
+}
+
 .badge {
     display: inline-block;
     padding: 4px 12px;
@@ -520,28 +531,87 @@ main {
     color: var(--gray-700);
 }
 
-/* First Step */
-.first-step-section {
-    border: 2px solid var(--success);
-    background-color: rgba(16, 185, 129, 0.05);
+/* First Step — highlighted hero above score */
+.first-step-hero {
+    border: 2px solid var(--primary);
+    background: linear-gradient(145deg, rgba(59, 130, 246, 0.1) 0%, rgba(16, 185, 129, 0.07) 100%);
+    box-shadow: 0 8px 28px rgba(59, 130, 246, 0.15);
+    margin-bottom: 28px;
 }
 
-.first-step-box {
-    background-color: white;
-    padding: 20px;
-    border-radius: 8px;
-    border-left: 4px solid var(--success);
+.first-step-hero h3 {
+    margin-bottom: 14px;
+    font-size: 1.35rem;
+    color: var(--gray-900);
 }
 
-.first-step-box p {
-    margin: 0 0 12px;
-    font-weight: 500;
+.first-step-task-body {
+    font-size: 1.08rem;
+    font-weight: 600;
+    line-height: 1.55;
+    margin: 0 0 16px;
+    color: var(--gray-900);
 }
 
-.first-step-box .hint {
-    color: var(--gray-500);
-    font-size: 14px;
-    margin: 0;
+.first-step-meta {
+    padding: 14px 16px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.75);
+    border: 1px solid var(--gray-200);
+}
+
+.first-step-meta p {
+    margin: 0 0 10px;
+    font-size: 15px;
+    color: var(--gray-700);
+}
+
+.first-step-meta p:last-child {
+    margin-bottom: 0;
+}
+
+.first-step-meta-label {
+    font-weight: 700;
+    color: var(--gray-900);
+    margin-right: 6px;
+}
+
+.first-step-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 18px;
+    align-items: center;
+}
+
+.first-step-micro-feedback {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid var(--gray-200);
+}
+
+.btn-micro-feedback {
+    font-family: inherit;
+    font-size: 12px;
+    padding: 4px 8px;
+    border: none;
+    background: none;
+    color: var(--primary-dark);
+    cursor: pointer;
+    transition: color 0.2s ease;
+}
+
+.btn-micro-feedback:hover {
+    color: var(--primary);
+}
+
+.first-step-micro-msg {
+    margin: 10px 0 0;
+    font-size: 13px;
+    color: var(--gray-600);
 }
 
 /* Token Estimate */
@@ -589,6 +659,18 @@ main {
     text-decoration: underline;
 }
 
+/* Bottom CTAs (e.g. Results page) */
+.cta-section {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    justify-content: center;
+    margin-top: 36px;
+    padding-top: 28px;
+    border-top: 1px solid var(--gray-200);
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .analysis-form {
@@ -609,11 +691,14 @@ main {
 
     .cta-section {
         flex-direction: column;
+        align-items: stretch;
+        gap: 14px;
     }
 
-    .btn {
+    .cta-section .btn {
         display: block;
         width: 100%;
+        box-sizing: border-box;
         text-align: center;
     }
 }

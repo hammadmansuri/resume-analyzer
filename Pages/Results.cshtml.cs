@@ -11,13 +11,17 @@ namespace resume_analyzer.Pages;
 public class ResultsModel : PageModel
 {
     private readonly FeedbackService _feedbackService;
+    private readonly InteractionLogService _interactionLog;
 
     public ResumeAnalysisResponse? Analysis { get; set; }
     public string? TargetRole { get; set; }
+    public string InteractionSessionId { get; set; } = string.Empty;
+    public string SubmittedWithFile { get; set; } = string.Empty;
 
-    public ResultsModel(FeedbackService feedbackService)
+    public ResultsModel(FeedbackService feedbackService, InteractionLogService interactionLog)
     {
         _feedbackService = feedbackService;
+        _interactionLog = interactionLog;
     }
 
     public IActionResult OnGet(bool? download)
@@ -26,11 +30,13 @@ public class ResultsModel : PageModel
 
         if (download == true && Analysis != null)
         {
+            LogResultsEvent("server_results_downloaded");
             var report = GenerateReport();
             var bytes = Encoding.UTF8.GetBytes(report);
             return File(bytes, "text/html", "resume-analysis-report.html");
         }
 
+        LogResultsEvent(Analysis != null ? "server_results_page_loaded" : "server_results_page_missing_analysis");
         return Page();
     }
 
@@ -52,11 +58,26 @@ public class ResultsModel : PageModel
                 Helpful = helpful
             };
             _feedbackService.AddFeedback(feedback);
+            _interactionLog.Log("server_feedback_submitted", HttpContext, new Dictionary<string, object?>
+            {
+                ["targetRoleLength"] = (feedbackTargetRole ?? string.Empty).Length,
+                ["score"] = feedbackScore.Value,
+                ["rating"] = rating,
+                ["helpful"] = helpful,
+                ["commentLength"] = comments?.Length ?? 0
+            }, InteractionSessionId);
 
             TempData["FeedbackSubmitted"] = "Thank you for your feedback!";
         }
         else
         {
+            _interactionLog.Log("server_feedback_failed", HttpContext, new Dictionary<string, object?>
+            {
+                ["reason"] = "missing_analysis_details",
+                ["rating"] = rating,
+                ["helpful"] = helpful,
+                ["commentLength"] = comments?.Length ?? 0
+            }, InteractionSessionId);
             TempData["FeedbackSubmitted"] = "Unable to save feedback because the analysis details expired. Please run a new analysis and try again.";
         }
 
@@ -77,14 +98,39 @@ public class ResultsModel : PageModel
                 PropertyNameCaseInsensitive = true
             };
             Analysis = JsonSerializer.Deserialize<ResumeAnalysisResponse>(analysisJson, options);
+            if (Analysis != null)
+            {
+                ResumeAnalyzerService.EnsureFirstStep(Analysis);
+            }
+
             TargetRole = TempData.Peek("TargetRole")?.ToString();
+            InteractionSessionId = TempData.Peek("InteractionSessionId")?.ToString() ?? string.Empty;
+            SubmittedWithFile = TempData.Peek("SubmittedWithFile")?.ToString() ?? string.Empty;
             TempData.Keep("AnalysisResult");
             TempData.Keep("TargetRole");
+            TempData.Keep("InteractionSessionId");
+            TempData.Keep("SubmittedWithFile");
         }
         catch
         {
             // If deserialization fails, analysis will be null
         }
+    }
+
+    private void LogResultsEvent(string eventName)
+    {
+        _interactionLog.Log(eventName, HttpContext, new Dictionary<string, object?>
+        {
+            ["hasAnalysis"] = Analysis != null,
+            ["targetRoleLength"] = TargetRole?.Length ?? 0,
+            ["score"] = Analysis?.Score,
+            ["fit"] = Analysis?.RoleAssessment?.Fit ?? string.Empty,
+            ["hasFirstStep"] = !string.IsNullOrWhiteSpace(Analysis?.FirstStep?.Task),
+            ["actionPlanCount"] = Analysis?.ActionPlan?.Count ?? 0,
+            ["mustHaveCount"] = Analysis?.MissingSkills?.MustHave?.Count ?? 0,
+            ["goodToHaveCount"] = Analysis?.MissingSkills?.GoodToHave?.Count ?? 0,
+            ["submittedWithFile"] = SubmittedWithFile
+        }, InteractionSessionId);
     }
 
     private string GenerateReport()
@@ -109,21 +155,37 @@ public class ResultsModel : PageModel
         builder.AppendLine(".section-note { color: #6b7280; margin-top: 8px; }");
         builder.AppendLine("</style>\n</head>\n<body>\n<div class=\"report-card\">\n");
         builder.AppendLine($"<h1>Resume Analysis Report</h1>\n<p class=\"subtitle\">Target role: <strong>{Encode(TargetRole)}</strong></p>\n");
+
         builder.AppendLine("<section class=\"section\"><h2>Overview</h2>\n<div class=\"meta\">\n");
         builder.AppendLine($"<div><strong>Score</strong><span>{Analysis?.Score}</span></div>\n");
         builder.AppendLine($"<div><strong>Fit</strong><span>{Encode(Analysis?.RoleAssessment.Fit)}</span></div>\n");
         builder.AppendLine($"<div><strong>Suggested role</strong><span>{Encode(Analysis?.RoleAssessment.SuggestedRole)}</span></div>\n");
         builder.AppendLine($"<div><strong>Confidence</strong><span>{Encode(Analysis?.RoleAssessment.Confidence)}</span></div>\n");
         builder.AppendLine("</div>\n");
+        builder.AppendLine($"<p class=\"section-note\"><strong>Readiness:</strong> {Encode(GetScoreInterpretation())}</p>\n");
         if (!string.IsNullOrEmpty(Analysis?.RoleAssessment.Reason))
         {
             builder.AppendLine($"<p>{Encode(Analysis.RoleAssessment.Reason)}</p>\n");
         }
         builder.AppendLine("</section>\n");
 
+        if (Analysis?.FirstStep != null && !string.IsNullOrWhiteSpace(Analysis.FirstStep.Task))
+        {
+            builder.AppendLine("<section class=\"section\"><h2>🚀 Start Here (Do this first)</h2>\n<div class=\"list-card\">\n");
+            builder.AppendLine($"<p><strong>Task:</strong> {Encode(Analysis.FirstStep.Task)}</p>\n");
+            builder.AppendLine($"<p><strong>Time:</strong> {Encode(Analysis.FirstStep.Time)}</p>\n");
+            builder.AppendLine($"<p><strong>Outcome:</strong> {Encode(Analysis.FirstStep.Outcome)}</p>\n");
+            if (!string.IsNullOrWhiteSpace(Analysis.FirstStep.Resource))
+            {
+                builder.AppendLine($"<p><a href=\"{Encode(Analysis.FirstStep.Resource)}\">Open suggested resource search</a></p>\n");
+            }
+
+            builder.AppendLine("</div>\n</section>\n");
+        }
+
         if (Analysis?.Strengths?.Count > 0)
         {
-            builder.AppendLine("<section class=\"section\"><h2>Strengths</h2>\n<ul class=\"list-card\">\n");
+            builder.AppendLine("<section class=\"section\"><h2>What you're already good at</h2>\n<ul class=\"list-card\">\n");
             foreach (var strength in Analysis.Strengths)
             {
                 builder.AppendLine($"<li>{Encode(strength)}</li>\n");
@@ -158,9 +220,28 @@ public class ResultsModel : PageModel
         if (Analysis?.ActionPlan?.Count > 0)
         {
             builder.AppendLine("<section class=\"section\"><h2>Action Plan</h2>\n<p class=\"section-note\">Follow this sequence to close key gaps.</p>\n<ul class=\"list-card\">\n");
-            foreach (var step in Analysis.ActionPlan)
+            foreach (var (step, ordinal) in Analysis.ActionPlan.Select((s, i) => (s, i + 1)))
             {
-                builder.AppendLine($"<li><strong>Step {step.Step}:</strong> {Encode(step.Task)}<br><span class=\"badge\">Goal: {Encode(step.Goal)}</span><span class=\"badge\">Difficulty: {Encode(step.Difficulty)}</span><span class=\"badge\">Time: {Encode(step.Time)}</span></li>\n");
+                var displayStep = step.Step >= 1 ? step.Step : ordinal;
+                builder.AppendLine($"<li><strong>Step {displayStep}:</strong> {Encode(step.Task)}<br>"
+                    + $"<span class=\"badge\">Difficulty: {Encode(step.Difficulty)}</span>"
+                    + $"<span class=\"badge\">Time: {Encode(step.Time)}</span><br>");
+                if (!string.IsNullOrWhiteSpace(step.Why))
+                {
+                    builder.AppendLine($"<strong>Why:</strong> {Encode(step.Why)}<br>");
+                }
+
+                if (!string.IsNullOrWhiteSpace(step.SuccessCriteria))
+                {
+                    builder.AppendLine($"<strong>Success criteria:</strong> {Encode(step.SuccessCriteria)}<br>");
+                }
+
+                if (!string.IsNullOrWhiteSpace(step.Goal) && string.IsNullOrWhiteSpace(step.SuccessCriteria))
+                {
+                    builder.AppendLine($"<span class=\"badge\">Goal: {Encode(step.Goal)}</span><br>");
+                }
+
+                builder.AppendLine("</li>\n");
             }
             builder.AppendLine("</ul>\n</section>\n");
         }
@@ -169,16 +250,22 @@ public class ResultsModel : PageModel
             builder.AppendLine("<section class=\"section\"><h2>Action Plan</h2>\n<p class=\"section-note\">Follow this sequence to close key gaps.</p>\n<ul class=\"list-card\">\n");
             foreach (var (action, index) in Analysis.Actions.Select((a, i) => (a, i + 1)))
             {
-                builder.AppendLine($"<li><strong>Step {index}:</strong> {Encode(action.Task)}<br><span class=\"badge\">Difficulty: {Encode(action.Difficulty)}</span><span class=\"badge\">Time: {Encode(action.Time)}</span></li>\n");
+                builder.AppendLine($"<li><strong>Step {index}:</strong> {Encode(action.Task)}<br>"
+                    + $"<span class=\"badge\">Difficulty: {Encode(action.Difficulty)}</span>"
+                    + $"<span class=\"badge\">Time: {Encode(action.Time)}</span><br>");
+                if (!string.IsNullOrWhiteSpace(action.Why))
+                {
+                    builder.AppendLine($"<strong>Why:</strong> {Encode(action.Why)}<br>");
+                }
+
+                if (!string.IsNullOrWhiteSpace(action.SuccessCriteria))
+                {
+                    builder.AppendLine($"<strong>Success criteria:</strong> {Encode(action.SuccessCriteria)}<br>");
+                }
+
+                builder.AppendLine("</li>\n");
             }
             builder.AppendLine("</ul>\n</section>\n");
-        }
-
-        if (!string.IsNullOrEmpty(Analysis?.FirstStep))
-        {
-            builder.AppendLine("<section class=\"section\"><h2>First Step</h2>\n<div class=\"list-card\">\n");
-            builder.AppendLine($"<p>{Encode(Analysis.FirstStep)}</p>\n");
-            builder.AppendLine("</div>\n</section>\n");
         }
 
         builder.AppendLine("</div>\n</body>\n</html>");
@@ -202,12 +289,19 @@ public class ResultsModel : PageModel
     {
         return Analysis?.Score switch
         {
-            >= 85 => "Exceptional match for this role. You're well-prepared.",
-            >= 75 => "Strong candidate. Minor skill gaps to address.",
-            >= 65 => "Good foundation. Several skills to develop.",
-            >= 50 => "Moderate match. Significant learning needed.",
-            _ => "Early stage for this role. Focus on fundamentals."
+            >= 85 => "You're in strong shape—polish one or two gaps below and rehearse concise stories.",
+            >= 65 => "You're close to interview-ready. Focus on 1–2 key areas to improve your chances.",
+            >= 50 => "You're headed toward interview-ready—execute the Start Here task, then tackle the next action steps.",
+            _ => "Prioritize fundamentals from this report; small shipped artifacts beat passive studying."
         };
+    }
+
+    public string DifficultySlug(string? difficulty)
+    {
+        var d = (difficulty ?? string.Empty).Trim().ToLowerInvariant();
+        if (d.Contains("easy", StringComparison.Ordinal)) return "easy";
+        if (d.Contains("hard", StringComparison.Ordinal)) return "hard";
+        return "medium";
     }
 
     public string GetFitClass()

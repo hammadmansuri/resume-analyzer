@@ -11,6 +11,8 @@
 
 <div class="form-section">
     <form method="post" enctype="multipart/form-data" class="analysis-form">
+        <input type="hidden" id="interactionSessionId" name="interactionSessionId" />
+
         <div class="form-group">
             <label for="targetRole">Target Role *</label>
             <input type="text" id="targetRole" name="targetRole" placeholder=".NET Developer, Senior Frontend Engineer, etc." required class="form-control" />
@@ -22,7 +24,7 @@
             <div class="file-upload">
                 <input type="file" id="resumeFile" name="resumeFile" accept=".pdf,.txt,text/plain,application/pdf" class="file-input" />
                 <label for="resumeFile" class="file-label">
-                    <span class="upload-icon">📄</span>
+                    <span class="upload-icon">File</span>
                     <span>Click to upload or drag & drop</span>
                     <small>PDF or TXT (max 5MB)</small>
                 </label>
@@ -40,7 +42,7 @@
                 <span id="btnText">Analyze My Resume</span>
                 <span id="spinner" class="btn-loading" style="display:none;">
                     <span class="spinner-icon"></span>
-                    Analyzing your resume… (~5–10 sec)
+                    Analyzing your resume... (~5-10 sec)
                 </span>
             </button>
         </div>
@@ -51,11 +53,11 @@
                 <strong>Estimated tokens:</strong> @Model.EstimatedTokens / 2000
                 @if (Model.IsOverLimit)
                 {
-                    <span class="warning">⚠️ Over limit - please shorten input</span>
+                    <span class="warning">Over limit - please shorten input</span>
                 }
                 else
                 {
-                    <span class="ok">✓ Within limit</span>
+                    <span class="ok">Within limit</span>
                 }
             </div>
         }
@@ -73,17 +75,17 @@
     <h3>How It Works</h3>
     <div class="info-grid">
         <div class="info-card">
-            <div class="info-icon">1️⃣</div>
+            <div class="info-icon">1</div>
             <h4>Submit Your Resume</h4>
             <p>Upload your resume and specify your target role.</p>
         </div>
         <div class="info-card">
-            <div class="info-icon">2️⃣</div>
+            <div class="info-icon">2</div>
             <h4>AI Analysis</h4>
             <p>Our AI evaluates your readiness against market standards.</p>
         </div>
         <div class="info-card">
-            <div class="info-icon">3️⃣</div>
+            <div class="info-icon">3</div>
             <h4>Get Actionable Feedback</h4>
             <p>Receive realistic scores, missing skills, and project ideas.</p>
         </div>
@@ -91,15 +93,72 @@
 </div>
 
 <script>
+    const interactionSessionId = (() => {
+        const key = 'resumeAnalyzerInteractionSessionId';
+        const existing = sessionStorage.getItem(key);
+        if (existing) {
+            return existing;
+        }
+
+        const created = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        sessionStorage.setItem(key, created);
+        return created;
+    })();
+
+    document.getElementById('interactionSessionId').value = interactionSessionId;
+
+    const interactionStart = Date.now();
+    const loggedEvents = new Set();
+
+    function logInteraction(eventName, details = {}) {
+        const payload = JSON.stringify({
+            eventName,
+            sessionId: interactionSessionId,
+            details: {
+                secondsSinceLoad: Math.round((Date.now() - interactionStart) / 1000),
+                ...details
+            }
+        });
+
+        if (navigator.sendBeacon) {
+            navigator.sendBeacon('/api/interaction-log', new Blob([payload], { type: 'application/json' }));
+            return;
+        }
+
+        fetch('/api/interaction-log', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: payload,
+            keepalive: true
+        }).catch(() => {});
+    }
+
+    function logOnce(eventName, details = {}) {
+        if (loggedEvents.has(eventName)) {
+            return;
+        }
+
+        loggedEvents.add(eventName);
+        logInteraction(eventName, details);
+    }
+
+    function lengthMilestone(length, milestones) {
+        return milestones.filter(m => length >= m).pop() || 0;
+    }
+
+    logInteraction('client_page_view', {
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight
+    });
+
     function estimateTokens(text) {
-        return Math.ceil(text.length / 4); // Rough estimate: 1 token ≈ 4 chars
+        return Math.ceil(text.length / 4);
     }
 
     function updateTokenEstimate() {
         const targetRole = document.getElementById('targetRole').value.trim();
         const resumeText = document.getElementById('resumeText').value.trim();
-        const combinedText = targetRole + resumeText;
-        const tokens = estimateTokens(combinedText);
+        const tokens = estimateTokens(targetRole + resumeText);
         const maxTokens = 2000;
         const isOver = tokens > maxTokens;
 
@@ -113,39 +172,100 @@
         estimateDiv.className = `token-estimate ${isOver ? 'over-limit' : ''}`;
         estimateDiv.innerHTML = `
             <strong>Estimated tokens:</strong> ${tokens} / ${maxTokens}
-            ${isOver ? '<span class="warning">⚠️ Over limit - please shorten input</span>' : '<span class="ok">✓ Within limit</span>'}
+            ${isOver ? '<span class="warning">Over limit - please shorten input</span>' : '<span class="ok">Within limit</span>'}
         `;
     }
 
     document.getElementById('resumeFile').addEventListener('change', function(e) {
-        const fileName = e.target.files[0]?.name || 'No file chosen';
+        const selectedFile = e.target.files[0];
+        const fileName = selectedFile?.name || 'No file chosen';
         const label = document.querySelector('.file-label span:nth-child(2)');
         if (e.target.files.length > 0) {
-            label.textContent = '✓ ' + fileName;
+            label.textContent = 'Selected file';
+            logInteraction('client_resume_file_selected', {
+                fileExtension: fileName.includes('.') ? fileName.slice(fileName.lastIndexOf('.')).toLowerCase() : '',
+                fileSizeBytes: selectedFile?.size || 0
+            });
         }
-        // Note: Can't estimate tokens from file without reading content
     });
 
-    document.getElementById('targetRole').addEventListener('input', updateTokenEstimate);
-    document.getElementById('resumeText').addEventListener('input', updateTokenEstimate);
+    document.getElementById('targetRole').addEventListener('focus', function() {
+        logOnce('client_target_role_focused');
+    });
+
+    document.getElementById('resumeText').addEventListener('focus', function() {
+        logOnce('client_resume_text_focused');
+    });
+
+    document.getElementById('targetRole').addEventListener('input', function(e) {
+        updateTokenEstimate();
+
+        const length = e.target.value.trim().length;
+        const milestone = lengthMilestone(length, [1, 10, 25, 50]);
+        if (milestone > 0) {
+            logOnce(`client_target_role_length_${milestone}`, { targetRoleLength: length });
+        }
+    });
+
+    document.getElementById('resumeText').addEventListener('input', function(e) {
+        updateTokenEstimate();
+
+        const length = e.target.value.trim().length;
+        const milestone = lengthMilestone(length, [1, 500, 1500, 3000, 6000, 10000]);
+        if (milestone > 0) {
+            logOnce(`client_resume_text_length_${milestone}`, {
+                resumeTextLength: length,
+                estimatedTokens: estimateTokens(document.getElementById('targetRole').value.trim() + e.target.value.trim())
+            });
+        }
+    });
 
     document.querySelector('.analysis-form').addEventListener('submit', function() {
         const targetRole = document.getElementById('targetRole').value.trim();
         const resumeFile = document.getElementById('resumeFile').files.length;
         const resumeText = document.getElementById('resumeText').value.trim();
+        const estimatedTokens = estimateTokens(targetRole + resumeText);
+
+        logInteraction('client_submit_attempted', {
+            targetRoleLength: targetRole.length,
+            hasFile: resumeFile > 0,
+            hasPastedText: resumeText.length > 0,
+            resumeTextLength: resumeText.length,
+            estimatedTokens
+        });
 
         if (!targetRole) {
+            logInteraction('client_validation_failed', { reason: 'missing_target_role' });
             alert('Please enter a target role.');
             return false;
         }
 
         if (!resumeFile && !resumeText) {
+            logInteraction('client_validation_failed', { reason: 'missing_resume' });
             alert('Please upload a resume file or paste resume text.');
             return false;
         }
 
+        logInteraction('client_submit_validated', {
+            targetRoleLength: targetRole.length,
+            hasFile: resumeFile > 0,
+            hasPastedText: resumeText.length > 0,
+            resumeTextLength: resumeText.length,
+            estimatedTokens
+        });
+
         document.getElementById('analyzeBtn').disabled = true;
         document.getElementById('btnText').style.display = 'none';
         document.getElementById('spinner').style.display = 'inline-flex';
+    });
+
+    document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'hidden') {
+            logInteraction('client_page_hidden', {
+                targetRoleLength: document.getElementById('targetRole').value.trim().length,
+                resumeTextLength: document.getElementById('resumeText').value.trim().length,
+                hasFile: document.getElementById('resumeFile').files.length > 0
+            });
+        }
     });
 </script>

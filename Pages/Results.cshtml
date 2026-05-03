@@ -20,9 +20,33 @@
         </div>
     </div>
 
+    @if (Model.Analysis.FirstStep != null && !string.IsNullOrWhiteSpace(Model.Analysis.FirstStep.Task))
+    {
+        <section class="card first-step-hero" aria-labelledby="first-step-heading">
+            <h3 id="first-step-heading">🚀 Start Here — this is the fastest way to make progress</h3>
+            <p id="first-step-task-text" class="first-step-task-body">@Model.Analysis.FirstStep.Task</p>
+            <div class="first-step-meta">
+                <p><span class="first-step-meta-label">⏱ Time:</span> @Model.Analysis.FirstStep.Time</p>
+                <p><span class="first-step-meta-label">🎯 Outcome:</span> @Model.Analysis.FirstStep.Outcome</p>
+            </div>
+            <div class="first-step-actions">
+                @if (!string.IsNullOrWhiteSpace(Model.Analysis.FirstStep.Resource))
+                {
+                    <a href="@Model.Analysis.FirstStep.Resource" target="_blank" rel="noopener noreferrer" class="btn btn-primary">Start Step 1</a>
+                }
+                <button type="button" class="btn btn-outline" onclick="copyFirstStepTask()">Copy</button>
+            </div>
+            <div class="first-step-micro-feedback" role="group" aria-label="Was this first step helpful?">
+                <button type="button" class="btn-micro-feedback" onclick="firstStepMicroFeedback(true)">👍 This makes sense</button>
+                <button type="button" class="btn-micro-feedback" onclick="firstStepMicroFeedback(false)">👎 Not useful</button>
+            </div>
+            <p id="first-step-micro-msg" class="first-step-micro-msg" hidden></p>
+        </section>
+    }
+
     <!-- Strengths Section -->
     <section class="card strengths-section">
-        <h3>💪 Your Strengths</h3>
+        <h3>💪 What you're already good at</h3>
         @if (Model.Analysis.Strengths?.Count > 0)
         {
             <ul class="strengths-list">
@@ -40,7 +64,7 @@
 
     <!-- Missing Skills Section -->
     <section class="card skills-section">
-        <h3>🎯 What You Need to Learn</h3>
+        <h3>🎯 Focus Areas to Improve</h3>
         <div class="skill-blocks">
             @if (Model.Analysis.MissingSkills.MustHave?.Count > 0)
             {
@@ -96,15 +120,27 @@
         @if (Model.Analysis.ActionPlan?.Count > 0)
         {
             <div class="actions-grid">
-                @foreach (var step in Model.Analysis.ActionPlan)
+                @foreach (var (step, ordinal) in Model.Analysis.ActionPlan.Select((s, i) => (s, i + 1)))
                 {
                     <div class="action-card">
-                        <div class="action-number">@step.Step</div>
+                        <div class="action-number">@(step.Step >= 1 ? step.Step : ordinal)</div>
                         <h4>@step.Task</h4>
                         <div class="action-meta">
-                            <span class="badge difficulty-@step.Difficulty.ToLower()">@step.Difficulty</span>
+                            <span class="badge difficulty-@Model.DifficultySlug(step.Difficulty)">@step.Difficulty</span>
                             <span class="badge time">⏱️ @step.Time</span>
                         </div>
+                        @if (!string.IsNullOrWhiteSpace(step.Why))
+                        {
+                            <p class="action-detail"><strong>Why:</strong> @step.Why</p>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(step.SuccessCriteria))
+                        {
+                            <p class="action-detail"><strong>Success criteria:</strong> @step.SuccessCriteria</p>
+                        }
+                        @if (string.IsNullOrWhiteSpace(step.Why) && string.IsNullOrWhiteSpace(step.SuccessCriteria) && !string.IsNullOrWhiteSpace(step.Goal))
+                        {
+                            <p class="action-detail"><strong>Goal:</strong> @step.Goal</p>
+                        }
                     </div>
                 }
             </div>
@@ -118,9 +154,17 @@
                         <div class="action-number">@index</div>
                         <h4>@action.Task</h4>
                         <div class="action-meta">
-                            <span class="badge difficulty-@action.Difficulty.ToLower()">@action.Difficulty</span>
+                            <span class="badge difficulty-@Model.DifficultySlug(action.Difficulty)">@action.Difficulty</span>
                             <span class="badge time">⏱️ @action.Time</span>
                         </div>
+                        @if (!string.IsNullOrWhiteSpace(action.Why))
+                        {
+                            <p class="action-detail"><strong>Why:</strong> @action.Why</p>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(action.SuccessCriteria))
+                        {
+                            <p class="action-detail"><strong>Success criteria:</strong> @action.SuccessCriteria</p>
+                        }
                     </div>
                 }
             </div>
@@ -130,17 +174,6 @@
             <p>No action plan available. Try adjusting the target role or resume detail.</p>
         }
     </section>
-
-    @if (!string.IsNullOrEmpty(Model.Analysis.FirstStep))
-    {
-        <section class="card first-step-section">
-            <h3>🎯 Start Today</h3>
-            <div class="first-step-box">
-                <p>@Model.Analysis.FirstStep</p>
-                <p class="hint">This can be completed in 1-2 days and will immediately boost your competitiveness.</p>
-            </div>
-        </section>
-    }
 
     <!-- Feedback Section -->
     <div class="feedback-link">
@@ -209,7 +242,152 @@ else
 }
 
 <script>
+    const resultsSessionId = (() => {
+        const fromServer = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model?.InteractionSessionId ?? string.Empty));
+        if (fromServer) {
+            sessionStorage.setItem('resumeAnalyzerInteractionSessionId', fromServer);
+            return fromServer;
+        }
+
+        const existing = sessionStorage.getItem('resumeAnalyzerInteractionSessionId');
+        if (existing) {
+            return existing;
+        }
+
+        const created = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        sessionStorage.setItem('resumeAnalyzerInteractionSessionId', created);
+        return created;
+    })();
+
+    const resultsStart = Date.now();
+    const resultsLoggedEvents = new Set();
+    const dwellThresholds = [10, 30, 60, 120, 300];
+    const scrollThresholds = [25, 50, 75, 100];
+    let maxScrollDepth = 0;
+    let startStepClicked = false;
+    let copiedFirstStep = false;
+    let feedbackOpened = false;
+
+    function logResultsInteraction(eventName, details = {}) {
+        const payload = JSON.stringify({
+            eventName,
+            sessionId: resultsSessionId,
+            details: {
+                secondsOnResults: Math.round((Date.now() - resultsStart) / 1000),
+                maxScrollDepth,
+                startStepClicked,
+                copiedFirstStep,
+                feedbackOpened,
+                score: @((Model?.Analysis?.Score ?? 0)),
+                hasFirstStep: @((Model?.Analysis?.FirstStep != null && !string.IsNullOrWhiteSpace(Model.Analysis.FirstStep.Task)).ToString().ToLowerInvariant()),
+                actionPlanCount: @((Model?.Analysis?.ActionPlan?.Count ?? 0)),
+                ...details
+            }
+        });
+
+        if (navigator.sendBeacon) {
+            navigator.sendBeacon('/api/interaction-log', new Blob([payload], { type: 'application/json' }));
+            return;
+        }
+
+        fetch('/api/interaction-log', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: payload,
+            keepalive: true
+        }).catch(() => {});
+    }
+
+    function logResultsOnce(eventName, details = {}) {
+        if (resultsLoggedEvents.has(eventName)) {
+            return;
+        }
+
+        resultsLoggedEvents.add(eventName);
+        logResultsInteraction(eventName, details);
+    }
+
+    logResultsInteraction('client_results_page_view', {
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+        submittedWithFile: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model?.SubmittedWithFile ?? string.Empty))
+    });
+
+    dwellThresholds.forEach(seconds => {
+        window.setTimeout(() => {
+            logResultsOnce(`client_results_dwell_${seconds}s`, { dwellThresholdSeconds: seconds });
+        }, seconds * 1000);
+    });
+
+    window.addEventListener('scroll', function() {
+        const scrollable = Math.max(document.documentElement.scrollHeight - window.innerHeight, 1);
+        const depth = Math.min(100, Math.round((window.scrollY / scrollable) * 100));
+        maxScrollDepth = Math.max(maxScrollDepth, depth);
+
+        const milestone = scrollThresholds.filter(m => maxScrollDepth >= m).pop() || 0;
+        if (milestone > 0) {
+            logResultsOnce(`client_results_scroll_${milestone}`, { scrollDepth: maxScrollDepth });
+        }
+    }, { passive: true });
+
+    document.querySelector('.first-step-actions .btn-primary')?.addEventListener('click', function() {
+        startStepClicked = true;
+        logResultsInteraction('client_start_step_1_clicked', {
+            hrefHost: this.href ? new URL(this.href).host : '',
+            taskLength: (document.getElementById('first-step-task-text')?.textContent || '').trim().length
+        });
+    });
+
+    document.querySelector('.cta-section .btn-secondary')?.addEventListener('click', function() {
+        logResultsInteraction('client_analyze_another_clicked');
+    });
+
+    document.querySelector('.cta-section a[href="?download=true"]')?.addEventListener('click', function() {
+        logResultsInteraction('client_download_report_clicked');
+    });
+    function firstStepMicroFeedback(useful) {
+        const el = document.getElementById('first-step-micro-msg');
+        if (!el) return;
+        el.hidden = false;
+        logResultsInteraction('client_first_step_micro_feedback', { useful });
+        el.textContent = useful ? 'Thanks—that helps us tune suggestions.' : 'Thanks—we\'ll keep improving.';
+    }
+
+    function copyFirstStepTask() {
+        const el = document.getElementById('first-step-task-text');
+        if (!el) return;
+        const text = (el.textContent || '').trim();
+        if (!text) return;
+        copiedFirstStep = true;
+        logResultsInteraction('client_first_step_copied', { taskLength: text.length });
+
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(() => {
+                alert('Task copied to clipboard.');
+            }).catch(() => fallbackCopy(text));
+        } else {
+            fallbackCopy(text);
+        }
+    }
+
+    function fallbackCopy(text) {
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-9999px';
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+            document.execCommand('copy');
+            alert('Task copied to clipboard.');
+        } catch {
+            alert('Could not copy automatically. Select the task text and copy manually.');
+        }
+        document.body.removeChild(textArea);
+    }
+
     function shareResults() {
+        logResultsInteraction('client_share_results_clicked');
         const title = `Resume Analysis for ${document.querySelector('.results-header strong').textContent}`;
         const text = `Check out my resume analysis score: ${document.querySelector('.score-number').textContent}/100 for ${document.querySelector('.results-header strong').textContent}`;
         const url = window.location.href;
@@ -239,10 +417,13 @@ else
     }
 
     function openFeedbackModal() {
+        feedbackOpened = true;
+        logResultsInteraction('client_feedback_opened');
         document.getElementById('feedbackModal').style.display = 'block';
     }
 
     function closeFeedbackModal() {
+        logResultsInteraction('client_feedback_closed');
         document.getElementById('feedbackModal').style.display = 'none';
     }
 
@@ -278,6 +459,7 @@ else
         label.addEventListener('click', function() {
             const starValue = parseInt(this.dataset.star);
             document.getElementById(`star-${starValue}`).checked = true;
+            logResultsInteraction('client_feedback_rating_selected', { rating: starValue });
             updateStarColors();
         });
     });
@@ -294,6 +476,38 @@ else
         });
     }
 
+    document.querySelectorAll('input[name="helpful"]').forEach(input => {
+        input.addEventListener('change', function() {
+            logResultsInteraction('client_feedback_helpful_selected', { helpful: this.value === 'true' });
+        });
+    });
+
+    document.getElementById('comments')?.addEventListener('input', function() {
+        const length = this.value.trim().length;
+        if (length > 0) {
+            logResultsOnce('client_feedback_comment_started', { commentLength: length });
+        }
+    });
+
+    document.getElementById('feedbackForm')?.addEventListener('submit', function() {
+        const checkedRating = document.querySelector('.rating-stars input:checked');
+        const checkedHelpful = document.querySelector('input[name="helpful"]:checked');
+        logResultsInteraction('client_feedback_submit_attempted', {
+            rating: checkedRating ? parseInt(checkedRating.value) : 0,
+            helpful: checkedHelpful ? checkedHelpful.value === 'true' : null,
+            commentLength: document.getElementById('comments')?.value.trim().length || 0
+        });
+    });
+
     // Call updateStarColors on page load to ensure correct initial state
     document.addEventListener('DOMContentLoaded', updateStarColors);
+
+    document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'hidden') {
+            logResultsInteraction('client_results_page_hidden', {
+                leftWithoutStartingStep1: !startStepClicked,
+                finalScrollDepth: maxScrollDepth
+            });
+        }
+    });
 </script>
