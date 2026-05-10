@@ -94,6 +94,13 @@ public sealed class ResumeAnalysisResponse
     [System.Text.Json.Serialization.JsonConverter(typeof(resume_analyzer.Services.FlexibleIntConverter))]
     public int Score { get; init; }
 
+    [System.Text.Json.Serialization.JsonConverter(typeof(resume_analyzer.Services.FlexibleStringOrArrayConverter))]
+    public string QuickSummary { get; init; } = string.Empty;
+
+    [System.Text.Json.Serialization.JsonConverter(typeof(resume_analyzer.Services.FlexibleStringListConverter))]
+    public IReadOnlyList<string> QuickWins { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> ResumeTips { get; init; } = Array.Empty<string>();
+
     public MissingSkills MissingSkills { get; init; } = new();
     public IReadOnlyList<ActionPlanItem> ActionPlan { get; init; } = Array.Empty<ActionPlanItem>();
     public IReadOnlyList<ActionItem> Actions { get; init; } = Array.Empty<ActionItem>();

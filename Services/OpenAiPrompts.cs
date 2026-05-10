@@ -40,11 +40,13 @@ public static class OpenAiPrompts
         + "Examples of bad tasks: 'Create a React app and implement API integration with pagination and filtering', 'Build a full project with authentication and deployment'. ";
 
     private const string AnalyzeResumeOutputSchema =
-        "Return only valid JSON with keys: score (0-100), strengths (array of 3-4 concise strengths), "
+        "Return only valid JSON with keys: score (0-100), quickSummary (short summary string), quickWins (array of 2-3 concise guidance strings), resumeTips (array of 2-3 concise resume improvement suggestions), strengths (array of 3-4 concise strengths), "
         + "missingSkills (object with mustHave and goodToHave arrays of objects containing skill and reason), "
         + "actionPlan (array of objects with step, task, difficulty, time, why, successCriteria — optional legacy field goal allowed but omit when why/successCriteria cover it), "
         + "roleAssessment (object with fit, suggestedRole, confidence, reason), firstStep (string). "
         + "Use 'well-matched', 'under-qualified', or 'over-qualified' for fit. "
+        + "For quickSummary, use 2-3 clear bullet-like statements. For quickWins, return 2-3 short, actionable improvements. "
+        + "For resumeTips, return 2-3 concise, presentation-focused resume suggestions in under one sentence each. "
         + "For action plan step durations, use strings such as '2 days', '3-5 days', or '1 week' within the 1–7 day range per step. "
         + "Do not include any extra text outside the JSON object.";
 
@@ -58,7 +60,7 @@ public static class OpenAiPrompts
         + AnalyzeResumeOutputSchema;
 
     public static string AnalyzeResumeUser(string targetRole, string roleExpectations, string resumeText) =>
-        $"Target Role: {targetRole}\n\nMarket Expectations: {roleExpectations}\n\nResume:\n{resumeText}\n\nRespond with JSON only.";
+        $"Target Role: {targetRole}\n\nMarket Expectations: {roleExpectations}\n\nResume:\n{resumeText}\n\nRespond with valid JSON only. Start with '{{' and end with '}}'. Do not add any explanation or markdown outside the JSON object.";
 
     public const string RoleExpectationsSystem =
         "You are a hiring expert. Given a target role, list the most important 6–8 skills currently expected in the job market. "

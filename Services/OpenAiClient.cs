@@ -72,6 +72,135 @@ public class FlexibleIntConverter : JsonConverter<int>
     }
 }
 
+public class FlexibleStringOrArrayConverter : JsonConverter<string>
+{
+    public override string Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        return reader.TokenType switch
+        {
+            JsonTokenType.String => reader.GetString() ?? string.Empty,
+            JsonTokenType.StartArray => ReadArray(ref reader),
+            JsonTokenType.Null => string.Empty,
+            _ => reader.GetString() ?? string.Empty
+        };
+    }
+
+    private static string ReadArray(ref Utf8JsonReader reader)
+    {
+        var values = new List<string>();
+
+        while (reader.Read())
+        {
+            if (reader.TokenType == JsonTokenType.EndArray)
+            {
+                break;
+            }
+
+            switch (reader.TokenType)
+            {
+                case JsonTokenType.String:
+                    values.Add(reader.GetString() ?? string.Empty);
+                    break;
+                case JsonTokenType.Number:
+                    values.Add(reader.GetDouble().ToString(CultureInfo.InvariantCulture));
+                    break;
+                case JsonTokenType.True:
+                case JsonTokenType.False:
+                    values.Add(reader.GetBoolean().ToString());
+                    break;
+                case JsonTokenType.StartObject:
+                case JsonTokenType.StartArray:
+                    {
+                        using var document = JsonDocument.ParseValue(ref reader);
+                        values.Add(document.RootElement.ToString());
+                    }
+                    break;
+                case JsonTokenType.Null:
+                    break;
+                default:
+                    var defaultString = reader.GetString();
+                    if (!string.IsNullOrEmpty(defaultString))
+                    {
+                        values.Add(defaultString);
+                    }
+                    break;
+            }
+        }
+
+        return string.Join("\n", values.Where(v => !string.IsNullOrWhiteSpace(v)).Select(v => v.Trim()));
+    }
+
+    public override void Write(Utf8JsonWriter writer, string value, JsonSerializerOptions options)
+    {
+        writer.WriteStringValue(value);
+    }
+}
+
+public class FlexibleStringListConverter : JsonConverter<IReadOnlyList<string>>
+{
+    public override IReadOnlyList<string> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.StartArray)
+        {
+            var items = new List<string>();
+            while (reader.Read())
+            {
+                if (reader.TokenType == JsonTokenType.EndArray)
+                {
+                    break;
+                }
+
+                if (reader.TokenType == JsonTokenType.String)
+                {
+                    items.Add(reader.GetString() ?? string.Empty);
+                    continue;
+                }
+
+                if (reader.TokenType == JsonTokenType.Number)
+                {
+                    items.Add(reader.GetDouble().ToString(CultureInfo.InvariantCulture));
+                    continue;
+                }
+
+                if (reader.TokenType == JsonTokenType.True || reader.TokenType == JsonTokenType.False)
+                {
+                    items.Add(reader.GetBoolean().ToString());
+                    continue;
+                }
+
+                if (reader.TokenType == JsonTokenType.StartObject || reader.TokenType == JsonTokenType.StartArray)
+                {
+                    using var document = JsonDocument.ParseValue(ref reader);
+                    items.Add(document.RootElement.ToString());
+                }
+            }
+
+            return items.Where(i => !string.IsNullOrWhiteSpace(i)).Select(i => i.Trim()).ToArray();
+        }
+
+        if (reader.TokenType == JsonTokenType.String)
+        {
+            var raw = reader.GetString() ?? string.Empty;
+            return raw.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                      .Select(x => x.Trim())
+                      .Where(x => !string.IsNullOrWhiteSpace(x))
+                      .ToArray();
+        }
+
+        return Array.Empty<string>();
+    }
+
+    public override void Write(Utf8JsonWriter writer, IReadOnlyList<string> value, JsonSerializerOptions options)
+    {
+        writer.WriteStartArray();
+        foreach (var item in value)
+        {
+            writer.WriteStringValue(item);
+        }
+        writer.WriteEndArray();
+    }
+}
+
 public sealed class OpenAiClient
 {
     private const string DefaultApiUrl = "https://api.openai.com/v1/chat/completions";
@@ -86,12 +215,14 @@ public sealed class OpenAiClient
     private readonly HttpClient _httpClient;
     private readonly AnalysisCacheService _cacheService;
     private readonly UsageTrackingService _usageService;
+    private readonly Microsoft.Extensions.Logging.ILogger<OpenAiClient> _logger;
 
-    public OpenAiClient(HttpClient httpClient, AnalysisCacheService cacheService, UsageTrackingService usageService)
+    public OpenAiClient(HttpClient httpClient, AnalysisCacheService cacheService, UsageTrackingService usageService, Microsoft.Extensions.Logging.ILogger<OpenAiClient> logger)
     {
         _httpClient = httpClient;
         _cacheService = cacheService;
         _usageService = usageService;
+        _logger = logger;
     }
 
     public async Task<ResumeAnalysisResponse> AnalyzeResumeAsync(ResumeAnalysisRequest request, string apiKey, bool useSimplifiedAnalysis = false)
@@ -153,6 +284,7 @@ public sealed class OpenAiClient
 
         if (!response.IsSuccessStatusCode)
         {
+            _logger.LogError("OpenAI analysis request failed with status {StatusCode}. Raw response body: {ResponseBody}", response.StatusCode, responseBody);
             throw new HttpRequestException($"OpenAI request failed ({response.StatusCode}): {responseBody}");
         }
 
@@ -202,6 +334,7 @@ public sealed class OpenAiClient
 
         if (!response.IsSuccessStatusCode)
         {
+            _logger.LogError("OpenAI role expectations request failed with status {StatusCode}. Raw response body: {ResponseBody}", response.StatusCode, responseBody);
             throw new HttpRequestException($"OpenAI request failed ({response.StatusCode}): {responseBody}");
         }
 
@@ -213,7 +346,7 @@ public sealed class OpenAiClient
         return content.Trim();
     }
 
-    private static ResumeAnalysisResponse ParseOpenAiResponse(string json)
+    private ResumeAnalysisResponse ParseOpenAiResponse(string json)
     {
         try
         {
@@ -238,14 +371,12 @@ public sealed class OpenAiClient
         }
         catch (JsonException ex)
         {
-            // Log and provide fallback response with basic score
-            Console.Error.WriteLine($"JSON parsing error: {ex.Message}. Providing fallback response.");
+            _logger.LogError(ex, "OpenAI JSON parsing error. Raw response: {RawResponse}", json);
             return CreateFallbackResponse();
         }
         catch (Exception ex)
         {
-            // Log any other error
-            Console.Error.WriteLine($"Unexpected error parsing OpenAI response: {ex.Message}");
+            _logger.LogError(ex, "Unexpected error parsing OpenAI response. Raw response: {RawResponse}", json);
             throw;
         }
     }
@@ -328,6 +459,68 @@ public sealed class OpenAiClient
             }
         }
 
-        return trimmed;
+        if (trimmed.StartsWith("{"))
+        {
+            return trimmed;
+        }
+
+        var jsonStart = trimmed.IndexOf('{');
+        if (jsonStart < 0)
+        {
+            return trimmed;
+        }
+
+        var jsonEnd = FindMatchingBrace(trimmed, jsonStart);
+        return jsonEnd > jsonStart ? trimmed[jsonStart..(jsonEnd + 1)].Trim() : trimmed;
+    }
+
+    private static int FindMatchingBrace(string text, int startIndex)
+    {
+        var depth = 0;
+        var inString = false;
+        var escape = false;
+
+        for (var i = startIndex; i < text.Length; i++)
+        {
+            var c = text[i];
+
+            if (escape)
+            {
+                escape = false;
+                continue;
+            }
+
+            if (c == '\\' && inString)
+            {
+                escape = true;
+                continue;
+            }
+
+            if (c == '"')
+            {
+                inString = !inString;
+                continue;
+            }
+
+            if (inString)
+            {
+                continue;
+            }
+
+            if (c == '{')
+            {
+                depth++;
+            }
+            else if (c == '}')
+            {
+                depth--;
+                if (depth == 0)
+                {
+                    return i;
+                }
+            }
+        }
+
+        return -1;
     }
 }

@@ -20,6 +20,45 @@
         </div>
     </div>
 
+    @if (!string.IsNullOrWhiteSpace(Model.Analysis.QuickSummary))
+    {
+        <section class="card quick-summary-section">
+            <h3>⚡ Quick Summary</h3>
+            <ul class="summary-list">
+                @foreach (var line in Model.Analysis.QuickSummary.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    <li>@line.Trim()</li>
+                }
+            </ul>
+        </section>
+    }
+
+    @if (Model.Analysis.QuickWins?.Count > 0)
+    {
+        <section class="card quick-wins-section">
+            <h3>🚀 Quick Wins</h3>
+            <ol class="quick-wins-list">
+                @foreach (var win in Model.Analysis.QuickWins)
+                {
+                    <li>@win</li>
+                }
+            </ol>
+        </section>
+    }
+
+    @if (Model.Analysis.ResumeTips?.Count > 0)
+    {
+        <section class="card resume-tips-section">
+            <h3>📝 Resume Tips</h3>
+            <ul class="summary-list">
+                @foreach (var tip in Model.Analysis.ResumeTips)
+                {
+                    <li>@tip</li>
+                }
+            </ul>
+        </section>
+    }
+
     @if (Model.Analysis.FirstStep != null && !string.IsNullOrWhiteSpace(Model.Analysis.FirstStep.Task))
     {
         <section class="card first-step-hero" aria-labelledby="first-step-heading">
@@ -230,8 +269,8 @@
     <!-- CTA -->
     <div class="cta-section">
         <a href="/" class="btn btn-secondary">← Analyze Another Resume</a>
-        <button type="button" class="btn btn-outline" onclick="shareResults()">Share Results</button>
-        <a href="?download=true" class="btn btn-primary">Download Report</a>
+        <button type="button" class="btn btn-outline" onclick="shareResults()">🔗 Share Results</button>
+        <a href="?download=true" class="btn btn-primary">📥 Download Report</a>
     </div>
 }
 else

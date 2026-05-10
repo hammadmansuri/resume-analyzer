@@ -169,6 +169,36 @@ public class ResultsModel : PageModel
         }
         builder.AppendLine("</section>\n");
 
+        if (!string.IsNullOrWhiteSpace(Analysis?.QuickSummary))
+        {
+            builder.AppendLine("<section class=\"section\"><h2>⚡ Quick Summary</h2>\n<ul class=\"list-card\">\n");
+            foreach (var line in Analysis.QuickSummary.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                builder.AppendLine($"<li>{Encode(line.Trim())}</li>\n");
+            }
+            builder.AppendLine("</ul>\n</section>\n");
+        }
+
+        if (Analysis?.QuickWins?.Count > 0)
+        {
+            builder.AppendLine("<section class=\"section\"><h2>🚀 Quick Wins</h2>\n<ul class=\"list-card\">\n");
+            foreach (var win in Analysis.QuickWins)
+            {
+                builder.AppendLine($"<li>{Encode(win)}</li>\n");
+            }
+            builder.AppendLine("</ul>\n</section>\n");
+        }
+
+        if (Analysis?.ResumeTips?.Count > 0)
+        {
+            builder.AppendLine("<section class=\"section\"><h2>📝 Resume Tips</h2>\n<ul class=\"list-card\">\n");
+            foreach (var tip in Analysis.ResumeTips)
+            {
+                builder.AppendLine($"<li>{Encode(tip)}</li>\n");
+            }
+            builder.AppendLine("</ul>\n</section>\n");
+        }
+
         if (Analysis?.FirstStep != null && !string.IsNullOrWhiteSpace(Analysis.FirstStep.Task))
         {
             builder.AppendLine("<section class=\"section\"><h2>🚀 Start Here (Do this first)</h2>\n<div class=\"list-card\">\n");

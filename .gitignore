@@ -39,6 +39,11 @@ bld/
 .env.local
 *.local
 
+# Local app telemetry
+interaction_logs.jsonl
+.dotnet-home/
+dotnet-run*.log
+
 # OS files
 .DS_Store
 Thumbs.db

@@ -320,6 +320,62 @@ main {
     box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
 }
 
+.quick-summary-section,
+.quick-wins-section {
+    border: 1px solid rgba(59, 130, 246, 0.18);
+    background: linear-gradient(180deg, rgba(59, 130, 246, 0.08) 0%, rgba(255, 255, 255, 0.98) 100%);
+    box-shadow: 0 18px 44px rgba(59, 130, 246, 0.08);
+    padding: 34px;
+}
+
+.quick-summary-section h3,
+.quick-wins-section h3 {
+    color: #1d4ed8;
+}
+
+.summary-list,
+.quick-wins-list {
+    list-style: none;
+    padding-left: 0;
+    margin: 0;
+    counter-reset: win;
+}
+
+.summary-list li,
+.quick-wins-list li {
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid rgba(15, 23, 42, 0.06);
+    border-radius: 14px;
+    padding: 14px 18px;
+    margin-bottom: 12px;
+    color: #0f172a;
+    font-size: 15px;
+    line-height: 1.7;
+}
+
+.quick-wins-list li {
+    position: relative;
+    padding-left: 50px;
+}
+
+.quick-wins-list li:before {
+    counter-increment: win;
+    content: counter(win);
+    position: absolute;
+    left: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background-color: #2563eb;
+    color: white;
+    display: grid;
+    place-items: center;
+    font-size: 13px;
+    font-weight: 700;
+}
+
 .card h3 {
     margin-bottom: 20px;
     font-size: 20px;
