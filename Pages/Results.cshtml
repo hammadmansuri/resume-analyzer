@@ -137,7 +137,7 @@
     <section class="card assessment-section">
         <h3>📊 Role Fit Assessment</h3>
         <div class="fit-indicator @Model.GetFitClass()">
-            <strong>@Model.GetFitLabel():</strong> @Model.Analysis.RoleAssessment.Fit
+            <strong>@Model.GetFitLabel()</strong>
         </div>
         @if (!string.IsNullOrEmpty(Model.Analysis.RoleAssessment.SuggestedRole))
         {
